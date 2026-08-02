@@ -67,7 +67,7 @@ const Chatbot = ({ lang }) => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
-      alert(lang === 'am' ? 'ይቅርታ፣ የእርስዎ ብሮውሰር ድምፅ መቀበልን አይደግፍም። ስልክ ላይ ይሞክሩ።' : 'Sorry, your browser does not support voice input.');
+      alert(lang === 'am' ? 'ይቅርታ፣ የእርስዎ ብሮውሰር ድምፅ መቀበልን አይደግፍም። እባክዎ Google Chrome ይጠቀሙ።' : 'Sorry, your browser does not support voice input. Please use Google Chrome.');
       return;
     }
 
@@ -84,6 +84,10 @@ const Chatbot = ({ lang }) => {
     recognition.onerror = (event) => {
       console.error("Speech recognition error", event.error);
       setIsListening(false);
+      // ኤረር ከተፈጠረ ለተጠቃሚው ማሳወቅ
+      if (event.error === 'not-allowed') {
+        alert(lang === 'am' ? 'እባክዎ ለማይክሮፎን ፈቃድ (Permission) ይስጡ።' : 'Please allow microphone access.');
+      }
     };
     recognition.onend = () => setIsListening(false);
 
@@ -107,13 +111,13 @@ const Chatbot = ({ lang }) => {
       if (lang === 'am') {
         if (lowerInput.includes('ክፍል') || lowerInput.includes('አልጋ') || lowerInput.includes('ዋጋ') || lowerInput.includes('ስንት')) {
           aiResponse = 'ክፍሎቻችን እጅግ ሰፊ፣ ንጹህ እና ዘመናዊ ናቸው! ስታንዳርድ ክፍል (2,500 ብር)፣ ትዊን ክፍል (3,500 ብር)፣ ዲለክስ ክፍል ከነ ጃኩዚው (5,000 ብር) እና የቅንጦት ፕሬዚደንሻል ስዊት (9,000 ብር) አሉን። ሁሉም ክፍሎች ነጻ ፈጣን ዋይፋይ፣ ሙቅ ውሃ፣ ስማርት ቲቪ እና እጅግ ምቹ አልጋዎች አሏቸው።';
-          } else if (lowerInput.includes('ምግብ') || lowerInput.includes('ሬስቶራንት') || lowerInput.includes('ክትፎ') || lowerInput.includes('ዶሮ') || lowerInput.includes('ጣፋጭ')) {
+        } else if (lowerInput.includes('ምግብ') || lowerInput.includes('ሬስቶራንት') || lowerInput.includes('ክትፎ') || lowerInput.includes('ዶሮ') || lowerInput.includes('ጣፋጭ')) {
           aiResponse = 'ምግቦቻችን እጅግ ጣፋጭ፣ ከተፈጥሯዊ እና ትኩስ ግብዓቶች (100% Organic) የሚዘጋጁ ናቸው! ደንበኞቻችንን ለማስደሰት ዋጋችን በጣም ቅናሽ እና ተመጣጣኝ ነው። የሀገር ባህል ምግቦችን እንደ ልዩ ክትፎ እና ዶሮ ወጥ፣ እንዲሁም አፍ የሚያስገምጡ የውጪ ምግቦችን በንጽህና እናቀርባለን።';
         } else if (lowerInput.includes('ጂም') || lowerInput.includes('ስፖርት') || lowerInput.includes('gym') || lowerInput.includes('ፓርክ') || lowerInput.includes('መኪና')) {
           aiResponse = 'ለጤናዎ እና ለደህንነትዎ ትልቅ ትኩረት እንሰጣለን! በሆቴላችን ዘመናዊ እና የተሟላ የጂም (Gym) ማዕከል አለን። በተጨማሪም ለእንግዶቻችን ሰፊ፣ ምቹ እና 24 ሰዓት ጥበቃ ያለው ነጻ የመኪና ማቆሚያ (Parking space) አዘጋጅተናል።';
         } else if (lowerInput.includes('አድራሻ') || lowerInput.includes('የት') || lowerInput.includes('ቦታ') || lowerInput.includes('ማፕ')) {
-          // ጉግል ማፕ ሊንክን ያካተተ ምላሽ
-          aiResponse = 'ሆቴላችን የሚገኘው በአዲስ አበባ ከተማ፣ ቦሌ አካባቢ ነው። ቦታውን በቀላሉ ለማግኘት እና በጉግል ማፕ (Google Maps) ለመምጣት <a href="https://maps.google.com/?q=Bole,+Addis+Ababa" target="_blank" style="color: #3498db; text-decoration: underline; font-weight: bold;">እዚህ ይጫኑ</a>።';
+          // የተስተካከለው የጉግል ማፕ ሊንክ (አማርኛ)
+          aiResponse = 'ሆቴላችን የሚገኘው በአዲስ አበባ ከተማ፣ ቦሌ አካባቢ ነው። ቦታውን በቀላሉ ለማግኘት እና በጉግል ማፕ (Google Maps) ለመምጣት <a href="https://maps.app.goo.gl/4eUWbppEqXcWiAsC7?g_st=ac" target="_blank" style="color: #3498db; text-decoration: underline; font-weight: bold;">እዚህ ይጫኑ</a>።';
         } else if (lowerInput.includes('ስለ') || lowerInput.includes('አቀባበል') || lowerInput.includes('ሆቴል')) {
           aiResponse = 'Z Addis Hotel የኢትዮጵያን ሞቅ ያለ የእንግዳ አቀባበል ከዘመናዊ የሆቴል አገልግሎት ጋር አጣምሮ የያዘ ምርጥ ሆቴል ነው። ለእንግዶቻችን ያለን ክብር፣ እንክብካቤ እና ፈገግታ ወደር የለውም፤ በቆይታዎ 100% ደስተኛ እንደሚሆኑ እናረጋግጣለን!';
         } else if (lowerInput.includes('ቡኪንግ') || lowerInput.includes('ማዘዝ') || lowerInput.includes('መያዝ')) {
@@ -133,9 +137,9 @@ const Chatbot = ({ lang }) => {
         } else if (lowerInput.includes('gym') || lowerInput.includes('fitness') || lowerInput.includes('park') || lowerInput.includes('car')) {
           aiResponse = 'We care deeply about your health and safety! Our hotel features a fully equipped, modern Gym and fitness center. We also provide a spacious, highly secure, and free 24-hour parking area for all our guests.';
         } else if (lowerInput.includes('location') || lowerInput.includes('where') || lowerInput.includes('address') || lowerInput.includes('map')) {
-          // Google Maps Link for English
-          aiResponse = 'We are conveniently located in the vibrant area of Bole, Addis Ababa. To easily find us on Google Maps for directions, please <a href="https://maps.google.com/?q=Bole,+Addis+Ababa" target="_blank" style="color: #3498db; text-decoration: underline; font-weight: bold;">click here</a>.';
-          } else if (lowerInput.includes('about') || lowerInput.includes('hospitality') || lowerInput.includes('hotel')) {
+          // የተስተካከለው የጉግል ማፕ ሊንክ (English)
+          aiResponse = 'We are conveniently located in the vibrant area of Bole, Addis Ababa. To easily find us on Google Maps for directions, please <a href="https://maps.app.goo.gl/4eUWbppEqXcWiAsC7?g_st=ac" target="_blank" style="color: #3498db; text-decoration: underline; font-weight: bold;">click here</a>.';
+        } else if (lowerInput.includes('about') || lowerInput.includes('hospitality') || lowerInput.includes('hotel')) {
           aiResponse = 'Z Addis Hotel is a premier destination blending authentic Ethiopian hospitality with modern luxury. We treat our guests with the utmost respect and care, ensuring a 100% satisfying and memorable stay!';
         } else if (lowerInput.includes('book') || lowerInput.includes('reserve')) {
           aiResponse = 'To secure your stay, simply click on the "Booking" link in the top menu and fill out the quick form. We will have your room ready!';
