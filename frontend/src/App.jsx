@@ -1,6 +1,6 @@
 import Chatbot from './components/Chatbot';
 import Reviews from './pages/Reviews';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import './App.css';
@@ -12,15 +12,15 @@ import Rooms from './pages/Rooms';
 import Booking from './pages/Booking';
 import Gallery from './pages/Gallery';
 import Contact from './pages/Contact';
-import Restaurant from './pages/Restaurant'; // 👈 አዲሱን የሬስቶራንት ፋይል አስገባን
-import Facilities from './pages/Facilities'; // 👈 አዲሱን የአገልግሎት ፋይል አስገባን
+import Restaurant from './pages/Restaurant'; 
+import Facilities from './pages/Facilities'; 
 import Admin from './pages/Admin';
 
 // አክቲቭ የሆነውን ሊንክ ለማሳወቅ የምንጠቀምበት ትንሽ ፈንክሽን
-const NavLink = ({ to, currentPath, children, isDarkMode, isAccent }) => {
+const NavLink = ({ to, currentPath, children, isDarkMode, isAccent, onClick }) => {
   const isActive = currentPath === to;
   return (
-    <Link to={to} style={{
+    <Link to={to} onClick={onClick} style={{
       textDecoration: 'none',
       color: isAccent ? '#e67e22' : (isDarkMode ? (isActive ? '#e67e22' : '#e0e0e0') : (isActive ? '#e67e22' : '#2c3e50')),
       fontWeight: 'bold',
@@ -29,28 +29,38 @@ const NavLink = ({ to, currentPath, children, isDarkMode, isAccent }) => {
       borderRadius: '25px',
       backgroundColor: isActive && !isDarkMode ? '#f8f9fa' : (isActive && isDarkMode ? '#333' : 'transparent'),
       transition: 'all 0.3s ease',
-      borderBottom: isActive ? '2px solid #e67e22' : '2px solid transparent'
+      borderBottom: isActive ? '2px solid #e67e22' : '2px solid transparent',
+      display: 'block',
+      textAlign: 'center'
     }}>
       {children}
     </Link>
   );
 };
 
-const Navigation = ({ lang, isDarkMode }) => {
+const Navigation = ({ lang, isDarkMode, isMobile, closeMenu }) => {
   const location = useLocation();
   const currentPath = location.pathname;
 
   return (
-    <nav style={{ display: 'flex', gap: '15px', marginTop: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
-      <NavLink to="/" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ዋና ገጽ' : 'Home'}</NavLink>
-      <NavLink to="/about" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ስለ እኛ' : 'About Us'}</NavLink>
-      <NavLink to="/rooms" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ክፍሎች' : 'Rooms & Suites'}</NavLink>
-      <NavLink to="/restaurant" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ምግብ ቤት' : 'Restaurant'}</NavLink>
-      <NavLink to="/facilities" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'አገልግሎቶች' : 'Facilities'}</NavLink>
-      <NavLink to="/gallery" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ጋለሪ' : 'Gallery'}</NavLink>
-      <NavLink to="/contact" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'አድራሻ' : 'Contact Us'}</NavLink>
-      <NavLink to="/booking" currentPath={currentPath} isDarkMode={isDarkMode} isAccent={true}>{lang === 'am' ? 'ቦኪንግ' : 'Book Now'}</NavLink>
-      <NavLink to="/reviews" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'አስተያየቶች' : 'Reviews'}</NavLink>
+    <nav style={{ 
+      display: 'flex', 
+      flexDirection: isMobile ? 'column' : 'row', // በስልክ ጊዜ ወደ ታች ይደረደራል
+      gap: isMobile ? '10px' : '15px', 
+      marginTop: isMobile ? '15px' : '20px', 
+      flexWrap: 'wrap', 
+      justifyContent: 'center',
+      width: '100%'
+    }}>
+      <NavLink onClick={closeMenu} to="/" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ዋና ገጽ' : 'Home'}</NavLink>
+      <NavLink onClick={closeMenu} to="/about" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ስለ እኛ' : 'About Us'}</NavLink>
+      <NavLink onClick={closeMenu} to="/rooms" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ክፍሎች' : 'Rooms & Suites'}</NavLink>
+      <NavLink onClick={closeMenu} to="/restaurant" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ምግብ ቤት' : 'Restaurant'}</NavLink>
+      <NavLink onClick={closeMenu} to="/facilities" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'አገልግሎቶች' : 'Facilities'}</NavLink>
+      <NavLink onClick={closeMenu} to="/gallery" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'ጋለሪ' : 'Gallery'}</NavLink>
+      <NavLink onClick={closeMenu} to="/contact" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'አድራሻ' : 'Contact Us'}</NavLink>
+      <NavLink onClick={closeMenu} to="/booking" currentPath={currentPath} isDarkMode={isDarkMode} isAccent={true}>{lang === 'am' ? 'ቦኪንግ' : 'Book Now'}</NavLink>
+      <NavLink onClick={closeMenu} to="/reviews" currentPath={currentPath} isDarkMode={isDarkMode}>{lang === 'am' ? 'አስተያየቶች' : 'Reviews'}</NavLink>
     </nav>
   );
 };
@@ -58,6 +68,16 @@ const Navigation = ({ lang, isDarkMode }) => {
 function App() {
   const [lang, setLang] = useState('en');
   const [isDarkMode, setIsDarkMode] = useState(false);
+  
+  // ስክሪኑ የሞባይል መሆኑን ማወቂያ እና ሜኑ መክፈቻ/መዝጊያ
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 850);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 850);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   return (
     <Router>
@@ -73,36 +93,49 @@ function App() {
           <title>ZAddis Luxury Hotel - Addis Ababa</title>
         </Helmet>
 
-        
         <header style={{
           position: 'sticky', top: 0, zIndex: 1000,
-          backgroundColor: isDarkMode ? 'rgba(18, 18, 18, 0.85)' : 'rgba(255, 255, 255, 0.9)',
+          backgroundColor: isDarkMode ? 'rgba(18, 18, 18, 0.95)' : 'rgba(255, 255, 255, 0.95)',
           backdropFilter: 'blur(12px)',
           boxShadow: '0 4px 30px rgba(0,0,0,0.05)',
-          padding: '20px 30px',
+          padding: isMobile ? '15px 20px' : '20px 30px',
           borderBottom: isDarkMode ? '1px solid #333' : '1px solid #eaeaea'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '1200px', margin: '0 auto' }}>
-            <Link to="/" style={{ textDecoration: 'none' }}>
-            </Link>
-            <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: '900', letterSpacing: '2px', display: 'flex', alignItems: 'center' }}>
-                <span style={{ color: '#e67e22' }}>Z</span>
-                <span style={{ color: isDarkMode ? '#fff' : '#2c3e50', fontSize: '1.8rem', marginLeft: '2px' }}>Addis</span>
-              </h1>
             
-            <div style={{ display: 'flex', gap: '15px' }}>
-              <button onClick={() => setIsDarkMode(!isDarkMode)} style={{ cursor: 'pointer', padding: '8px 15px', borderRadius: '25px', border: isDarkMode ? '1px solid #555' : '1px solid #ccc', backgroundColor: isDarkMode ? '#333' : '#fff', color: isDarkMode ? '#fff' : '#000', transition: 'all 0.3s' }}>
-                {isDarkMode ? '☀️ Light' : '🌙 Dark'}
+            <Link to="/" style={{ textDecoration: 'none' }}>
+              <h1 style={{ margin: 0, fontSize: isMobile ? '1.8rem' : '2.5rem', fontWeight: '900', letterSpacing: '1px', display: 'flex', alignItems: 'center' }}>
+                <span style={{ color: '#e67e22' }}>Z</span>
+                <span style={{ color: isDarkMode ? '#fff' : '#2c3e50', fontSize: isMobile ? '1.4rem' : '1.8rem', marginLeft: '2px' }}>Addis</span>
+              </h1>
+            </Link>
+            
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button onClick={() => setIsDarkMode(!isDarkMode)} style={{ cursor: 'pointer', padding: isMobile ? '6px 10px' : '8px 15px', borderRadius: '25px', border: isDarkMode ? '1px solid #555' : '1px solid #ccc', backgroundColor: isDarkMode ? '#333' : '#fff', color: isDarkMode ? '#fff' : '#000', fontSize: isMobile ? '0.85rem' : '1rem' }}>
+                {isDarkMode ? '☀️' : '🌙'}
               </button>
-              <button onClick={() => setLang(lang === 'am' ? 'en' : 'am')} style={{ cursor: 'pointer', padding: '8px 20px', borderRadius: '25px', backgroundColor: '#e67e22', color: '#fff', border: 'none', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(230, 126, 34, 0.3)' }}>
-                {lang === 'am' ? 'English' : 'አማርኛ'}
+              <button onClick={() => setLang(lang === 'am' ? 'en' : 'am')} style={{ cursor: 'pointer', padding: isMobile ? '6px 12px' : '8px 20px', borderRadius: '25px', backgroundColor: '#e67e22', color: '#fff', border: 'none', fontWeight: 'bold', fontSize: isMobile ? '0.85rem' : '1rem' }}>
+                {lang === 'am' ? 'EN' : 'አማ'}
               </button>
+              
+              {/* በስልክ ጊዜ የሚታይ የሜኑ መክፈቻ ቁልፍ (Hamburger Icon) */}
+              {isMobile && (
+                <button 
+                  onClick={() => setIsMenuOpen(!isMenuOpen)} 
+                  style={{ background: 'none', border: 'none', fontSize: '1.8rem', color: isDarkMode ? '#fff' : '#333', cursor: 'pointer', marginLeft: '5px' }}
+                >
+                  {isMenuOpen ? '✕' : '☰'}
+                </button>
+              )}
             </div>
           </div>
           
-          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-            <Navigation lang={lang} isDarkMode={isDarkMode} />
-          </div>
+          {/* ሜኑው በኮምፒውተር ሁሌም ይታያል፣ በስልክ ግን ቁልፉ ሲነካ ብቻ */}
+          {(!isMobile || isMenuOpen) && (
+            <div style={{ maxWidth: '1200px', margin: '0 auto', transition: 'all 0.3s ease' }}>
+              <Navigation lang={lang} isDarkMode={isDarkMode} isMobile={isMobile} closeMenu={() => setIsMenuOpen(false)} />
+            </div>
+          )}
         </header>
 
         {/* ዋናው የገፆች ማሳያ */}
@@ -133,8 +166,8 @@ function App() {
           💬
         </a>
         <Chatbot lang={lang} />
-        </div>
-        </Router>
+      </div>
+    </Router>
   );
 }
 export default App;
