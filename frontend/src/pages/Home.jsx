@@ -7,12 +7,12 @@ const Home = ({ lang }) => {
       
       {/* የጀርባ ምስል (Hero Section) */}
       <div style={{ 
-        /* ፎቶው ከ public ፎልደር በቀጥታ እንዲነበብ '/12397.jpg' ተጠቅመናል */
         backgroundImage: 'linear-gradient(rgba(15, 23, 42, 0.65), rgba(15, 23, 42, 0.85)), url("/g1.jpg")', 
         backgroundSize: 'cover', 
         backgroundPosition: 'center', 
         color: 'white', 
-        padding: '120px 20px', 
+        /* በስልክ እና በኮምፒውተር ራሱን የሚያስተካክል ፓዲንግ */
+        padding: 'clamp(80px, 15vh, 120px) 20px', 
         textAlign: 'center',
         minHeight: '75vh',
         display: 'flex',
@@ -21,10 +21,30 @@ const Home = ({ lang }) => {
         alignItems: 'center',
         boxShadow: 'inset 0 -10px 20px rgba(0,0,0,0.5)'
       }}>
-        <h1 style={{ fontSize: '3.8rem', color: '#f39c12', marginBottom: '20px', textShadow: '2px 2px 8px rgba(0,0,0,0.8)', fontWeight: 'bold' }}>
+        
+        {/* 
+          ዋናው ጽሁፍ (Heading): clamp(2rem, 6vw, 3.8rem) በስልክ 2rem፣ በኮምፒውተር 3.8rem ይሆናል። 
+          እንዲሁም lineHeight: '1.2' ጽሁፎቹ እንዳይደራረቡ ይከላከላል።
+        */}
+        <h1 style={{ 
+          fontSize: 'clamp(2rem, 6vw, 3.8rem)', 
+          lineHeight: '1.2', 
+          color: '#f39c12', 
+          marginBottom: '20px', 
+          textShadow: '2px 2px 8px rgba(0,0,0,0.8)', 
+          fontWeight: 'bold' 
+        }}>
           {lang === 'am' ? 'ወደ ዜድ አዲስ ሆቴል እንኳን በደህና መጡ' : 'Welcome to Z Addis Hotel'}
         </h1>
-        <p style={{ fontSize: '1.3rem', maxWidth: '750px', marginBottom: '40px', lineHeight: '1.6', textShadow: '1px 1px 5px rgba(0,0,0,0.9)', color: '#e0e0e0' }}>
+        
+        <p style={{ 
+          fontSize: 'clamp(1rem, 3vw, 1.3rem)', 
+          maxWidth: '750px', 
+          marginBottom: '40px', 
+          lineHeight: '1.6', 
+          textShadow: '1px 1px 5px rgba(0,0,0,0.9)', 
+          color: '#e0e0e0' 
+        }}>
           {lang === 'am' 
             ? 'በእውነተኛ የኢትዮጵያ መስተንግዶ እና ዘመናዊ አገልግሎት የተዋበ ቆይታን ያሳልፉ። መስተንግዷችን ከጠበቁት በላይ ነው!' 
             : 'Experience the perfect blend of authentic Ethiopian hospitality and modern luxury. Your comfort is our top priority.'}
@@ -34,14 +54,14 @@ const Home = ({ lang }) => {
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
           <Link to="/booking" style={{ 
             backgroundColor: '#e67e22', color: 'white', padding: '15px 35px', textDecoration: 'none', 
-            fontSize: '1.2rem', borderRadius: '50px', fontWeight: 'bold', 
+            fontSize: '1.1rem', borderRadius: '50px', fontWeight: 'bold', 
             boxShadow: '0 4px 15px rgba(230, 126, 34, 0.4)' 
           }}>
             {lang === 'am' ? 'አሁኑኑ ቦታ ይያዙ (Book Now)' : 'Book Your Stay Now'}
           </Link>
           <Link to="/contact" style={{ 
             backgroundColor: 'transparent', border: '2px solid #fff', color: 'white', padding: '15px 35px', 
-            textDecoration: 'none', fontSize: '1.2rem', borderRadius: '50px', fontWeight: 'bold' 
+            textDecoration: 'none', fontSize: '1.1rem', borderRadius: '50px', fontWeight: 'bold' 
           }}>
             {lang === 'am' ? 'አድራሻችን (Contact Us)' : 'Contact Us'}
           </Link>
@@ -64,6 +84,7 @@ const Home = ({ lang }) => {
           <h3 style={{ color: '#2c3e50', marginBottom: '15px', fontSize: '1.5rem' }}>{lang === 'am' ? 'ልዩ የምግብ አዳራሽ' : 'Fine Dining'}</h3>
           <p style={{ color: '#666', lineHeight: '1.6' }}>{lang === 'am' ? 'በተዋጣላቸው ሼፎች የሚዘጋጁ የኢትዮጵያ ባህላዊ እና አለም አቀፍ ምግቦች በተመጣጣኝ ዋጋ።' : 'Enjoy traditional Ethiopian and international cuisine prepared by expert chefs.'}</p>
         </div>
+        
         {/* አገልግሎት 3 */}
         <div style={{ textAlign: 'center', maxWidth: '320px', padding: '30px', borderRadius: '15px', backgroundColor: '#fff', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
           <div style={{ fontSize: '3.5rem', marginBottom: '20px' }}>🌐</div>
