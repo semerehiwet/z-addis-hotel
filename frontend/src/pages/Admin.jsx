@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db, auth } from '../firebase';
+
 import {
   collection,
   getDocs,
   doc,
   updateDoc,
   deleteDoc,
-  orderBy,
-  query
+  query,
+  orderBy
 } from 'firebase/firestore';
+
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -25,6 +27,7 @@ const Admin = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
   // =========================
   // DATA
@@ -32,14 +35,15 @@ const Admin = () => {
   const [bookings, setBookings] = useState([]);
   const [reviews, setReviews] = useState([]);
 
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState('');
 
   // =========================
-  // SEARCH / FILTER
+  // UI
   // =========================
-  const [bookingSearch, setBookingSearch] = useState('');
-  const [bookingFilter, setBookingFilter] = useState('all');
+  const [activeTab, setActiveTab] = useState('bookings');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
 
   // =========================
   // AUTH LISTENER
@@ -49,8 +53,9 @@ const Admin = () => {
       setUser(currentUser);
       setAuthLoading(false);
 
-      if (currentUser) {
-        fetchAllData();
+      if (!currentUser) {
+        setBookings([]);
+        setReviews([]);
       }
     });
 
@@ -58,59 +63,61 @@ const Admin = () => {
   }, []);
 
   // =========================
-  // FETCH DATA
+  // FETCH DATA AFTER LOGIN
+  // =========================
+  useEffect(() => {
+    if (user) {
+      fetchAllData();
+    }
+  }, [user]);
+
+  // =========================
+  // FETCH BOOKINGS + REVIEWS
   // =========================
   const fetchAllData = async () => {
-    setLoading(true);
+    setDataLoading(true);
+    setDataError('');
 
     try {
-      const bookingsQuery = query(
-        collection(db, 'bookings'),
-        orderBy('createdAt', 'desc')
-      );
-
-      const bookingsSnapshot = await getDocs(bookingsQuery);
-
-      const bookingsData = bookingsSnapshot.docs.map((item) => ({
-        id: item.id,
-        ...item.data()
-      }));
-
-      setBookings(bookingsData);
-
-      const reviewsSnapshot = await getDocs(
-        collection(db, 'reviews')
-      );
-
-      const reviewsData = reviewsSnapshot.docs.map((item) => ({
-        id: item.id,
-        ...item.data()
-      }));
-
-      setReviews(reviewsData);
-    } catch (error) {
-      console.error('Fetch error:', error);
-
-      // fallback if createdAt/orderBy causes an index or missing-field issue
+      // -------------------------
+      // BOOKINGS
+      // -------------------------
       try {
-        const bookingsSnapshot = await getDocs(
-          collection(db, 'bookings')
+        const bookingsRef = collection(db, 'bookings');
+
+        const bookingsQuery = query(
+          bookingsRef,
+          orderBy('createdAt', 'desc')
         );
 
-        const bookingsData = bookingsSnapshot.docs.map((item) => ({
+        const bookingSnapshot = await getDocs(bookingsQuery);
+
+        const bookingData = bookingSnapshot.docs.map((item) => ({
           id: item.id,
           ...item.data()
         }));
 
-        bookingsData.sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0).getTime();
-          const dateB = new Date(b.createdAt || 0).getTime();
+        setBookings(bookingData);
+      } catch (bookingError) {
+        console.error('Bookings error:', bookingError);
 
-          return dateB - dateA;
-        });
+        // fallback if createdAt/orderBy causes an error
+        const bookingSnapshot = await getDocs(
+          collection(db, 'bookings')
+        );
 
-        setBookings(bookingsData);
+        const bookingData = bookingSnapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data()
+        }));
 
+        setBookings(bookingData);
+      }
+
+      // -------------------------
+      // REVIEWS
+      // -------------------------
+      try {
         const reviewsSnapshot = await getDocs(
           collection(db, 'reviews')
         );
@@ -121,16 +128,22 @@ const Admin = () => {
         }));
 
         setReviews(reviewsData);
-      } catch (secondError) {
-        console.error('Fallback fetch error:', secondError);
+      } catch (reviewError) {
+        console.error('Reviews error:', reviewError);
 
-        alert(
-          'Unable to load data. Please check your Firebase connection and Firestore rules.'
-        );
+        // Reviews collection may not exist yet.
+        setReviews([]);
       }
-    }
 
-    setLoading(false);
+    } catch (error) {
+      console.error('Dashboard error:', error);
+
+      setDataError(
+        'Unable to load dashboard data. Please check your Firebase connection.'
+      );
+    } finally {
+      setDataLoading(false);
+    }
   };
 
   // =========================
@@ -139,6 +152,7 @@ const Admin = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
 
+    setLoginError('');
     setLoginLoading(true);
 
     try {
@@ -147,15 +161,19 @@ const Admin = () => {
         email.trim(),
         password
       );
+
+      setEmail('');
+      setPassword('');
+
     } catch (error) {
       console.error(error);
 
-      alert(
-        '❌ Incorrect email or password.'
+      setLoginError(
+        'Incorrect email or password. Please try again.'
       );
+    } finally {
+      setLoginLoading(false);
     }
-
-    setLoginLoading(false);
   };
 
   // =========================
@@ -164,51 +182,70 @@ const Admin = () => {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      setEmail('');
-      setPassword('');
     } catch (error) {
-      console.error(error);
+      console.error('Logout error:', error);
     }
   };
 
   // =========================
   // CONFIRM BOOKING
   // =========================
-  const handleConfirmBooking = async (id) => {
+  const confirmBooking = async (id) => {
     try {
       await updateDoc(doc(db, 'bookings', id), {
         status: 'Confirmed',
         confirmedAt: new Date().toISOString()
       });
 
-      await fetchAllData();
+      setBookings((previous) =>
+        previous.map((booking) =>
+          booking.id === id
+            ? {
+                ...booking,
+                status: 'Confirmed',
+                confirmedAt: new Date().toISOString()
+              }
+            : booking
+        )
+      );
+
     } catch (error) {
       console.error(error);
-      alert('Unable to confirm booking.');
+      alert('Unable to confirm this booking.');
     }
   };
 
   // =========================
   // CANCEL BOOKING
   // =========================
-  const handleCancelBooking = async (id) => {
+  const cancelBooking = async (id) => {
     try {
       await updateDoc(doc(db, 'bookings', id), {
         status: 'Cancelled',
         cancelledAt: new Date().toISOString()
       });
 
-      await fetchAllData();
+      setBookings((previous) =>
+        previous.map((booking) =>
+          booking.id === id
+            ? {
+                ...booking,
+                status: 'Cancelled'
+              }
+            : booking
+        )
+      );
+
     } catch (error) {
       console.error(error);
-      alert('Unable to cancel booking.');
+      alert('Unable to cancel this booking.');
     }
   };
 
   // =========================
   // DELETE BOOKING
   // =========================
-  const handleDeleteBooking = async (id) => {
+  const deleteBooking = async (id) => {
     const confirmed = window.confirm(
       'Are you sure you want to permanently delete this booking?'
     );
@@ -217,7 +254,11 @@ const Admin = () => {
 
     try {
       await deleteDoc(doc(db, 'bookings', id));
-      await fetchAllData();
+
+      setBookings((previous) =>
+        previous.filter((booking) => booking.id !== id)
+      );
+
     } catch (error) {
       console.error(error);
       alert('Unable to delete booking.');
@@ -227,7 +268,7 @@ const Admin = () => {
   // =========================
   // DELETE REVIEW
   // =========================
-  const handleDeleteReview = async (id) => {
+  const deleteReview = async (id) => {
     const confirmed = window.confirm(
       'Are you sure you want to delete this review?'
     );
@@ -236,7 +277,11 @@ const Admin = () => {
 
     try {
       await deleteDoc(doc(db, 'reviews', id));
-      await fetchAllData();
+
+      setReviews((previous) =>
+        previous.filter((review) => review.id !== id)
+      );
+
     } catch (error) {
       console.error(error);
       alert('Unable to delete review.');
@@ -244,116 +289,33 @@ const Admin = () => {
   };
 
   // =========================
-  // STATISTICS
-  // =========================
-  const stats = useMemo(() => {
-    const total = bookings.length;
-
-    const confirmed = bookings.filter(
-      (b) =>
-        String(b.status || '').toLowerCase() === 'confirmed' ||
-        String(b.status || '').includes('✅')
-    ).length;
-
-    const pending = bookings.filter(
-      (b) =>
-        String(b.status || '').toLowerCase().includes('pending') ||
-        String(b.status || '').includes('⏳')
-    ).length;
-
-    const cancelled = bookings.filter(
-      (b) =>
-        String(b.status || '').toLowerCase().includes('cancelled')
-    ).length;
-
-    const revenue = bookings
-      .filter(
-        (b) =>
-          String(b.status || '').toLowerCase() === 'confirmed' ||
-          String(b.status || '').includes('✅')
-      )
-      .reduce((sum, booking) => {
-        const value = Number(
-          booking.totalPrice ||
-          booking.totalAmount ||
-          booking.amount ||
-          0
-        );
-
-        return sum + (Number.isFinite(value) ? value : 0);
-      }, 0);
-
-    return {
-      total,
-      confirmed,
-      pending,
-      cancelled,
-      revenue
-    };
-  }, [bookings]);
-
-  // =========================
-  // FILTER BOOKINGS
-  // =========================
-  const filteredBookings = useMemo(() => {
-    return bookings.filter((booking) => {
-      const search = bookingSearch.toLowerCase();
-
-      const matchesSearch =
-        !search ||
-        String(booking.name || '')
-          .toLowerCase()
-          .includes(search) ||
-        String(booking.phone || '')
-          .toLowerCase()
-          .includes(search) ||
-        String(booking.room || '')
-          .toLowerCase()
-          .includes(search);
-
-      const status = String(
-        booking.status || ''
-      ).toLowerCase();
-
-      let matchesFilter = true;
-
-      if (bookingFilter === 'pending') {
-        matchesFilter =
-          status.includes('pending') ||
-          status.includes('⏳');
-      }
-
-      if (bookingFilter === 'confirmed') {
-        matchesFilter =
-          status.includes('confirmed') ||
-          status.includes('✅');
-      }
-
-      if (bookingFilter === 'cancelled') {
-        matchesFilter = status.includes('cancelled');
-      }
-
-      return matchesSearch && matchesFilter;
-    });
-  }, [bookings, bookingSearch, bookingFilter]);
-
-  // =========================
   // HELPERS
   // =========================
-  const getStatusStyle = (status) => {
-    const value = String(status || '').toLowerCase();
+  const getStatus = (status) => {
+    if (!status) return 'Pending';
 
-    if (value.includes('confirmed') || value.includes('✅')) {
+    const value = String(status).toLowerCase();
+
+    if (value.includes('confirm')) return 'Confirmed';
+    if (value.includes('cancel')) return 'Cancelled';
+
+    return 'Pending';
+  };
+
+  const getStatusStyle = (status) => {
+    const normalized = getStatus(status);
+
+    if (normalized === 'Confirmed') {
       return {
         background: '#dcfce7',
         color: '#15803d'
       };
     }
 
-    if (value.includes('cancelled')) {
+    if (normalized === 'Cancelled') {
       return {
         background: '#fee2e2',
-        color: '#dc2626'
+        color: '#b91c1c'
       };
     }
 
@@ -363,34 +325,91 @@ const Admin = () => {
     };
   };
 
-  const formatMoney = (value) => {
-    const number = Number(value);
-
-    if (!Number.isFinite(number) || number === 0) {
-      return '-';
-    }
-
-    return `${number.toLocaleString()} ETB`;
+  const getReviewName = (review) => {
+    return (
+      review.name ||
+      review.userName ||
+      review.username ||
+      'Anonymous'
+    );
   };
 
-  const formatDate = (date) => {
-    if (!date) return '-';
-
-    try {
-      return new Date(date).toLocaleDateString();
-    } catch {
-      return date;
-    }
+  const getReviewText = (review) => {
+    return (
+      review.text ||
+      review.comment ||
+      review.reviewText ||
+      'No comment'
+    );
   };
 
   // =========================
-  // LOADING AUTH
+  // STATISTICS
+  // =========================
+  const statistics = useMemo(() => {
+    const total = bookings.length;
+
+    const confirmed = bookings.filter(
+      (b) => getStatus(b.status) === 'Confirmed'
+    ).length;
+
+    const pending = bookings.filter(
+      (b) => getStatus(b.status) === 'Pending'
+    ).length;
+
+    const cancelled = bookings.filter(
+      (b) => getStatus(b.status) === 'Cancelled'
+    ).length;
+
+    return {
+      total,
+      confirmed,
+      pending,
+      cancelled,
+      reviews: reviews.length
+    };
+  }, [bookings, reviews]);
+
+  // =========================
+  // FILTER BOOKINGS
+  // =========================
+  const filteredBookings = useMemo(() => {
+    const keyword = search.toLowerCase().trim();
+
+    return bookings.filter((booking) => {
+      const normalizedStatus = getStatus(booking.status);
+
+      const matchesStatus =
+        statusFilter === 'All' ||
+        normalizedStatus === statusFilter;
+
+      const searchableText = `
+        ${booking.name || ''}
+        ${booking.phone || ''}
+        ${booking.room || ''}
+        ${booking.checkIn || ''}
+        ${booking.checkOut || ''}
+      `.toLowerCase();
+
+      const matchesSearch =
+        !keyword || searchableText.includes(keyword);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [bookings, search, statusFilter]);
+
+  // =========================
+  // LOADING SCREEN
   // =========================
   if (authLoading) {
     return (
-      <div style={styles.fullScreenLoader}>
-        <div style={styles.loaderIcon}>🏨</div>
-        <h3>Loading Z Addis Hotel...</h3>
+      <div style={styles.fullScreen}>
+        <div style={styles.loaderBox}>
+          <div style={styles.spinner}></div>
+          <h3 style={{ marginTop: 20 }}>
+            Loading Admin Dashboard...
+          </h3>
+        </div>
       </div>
     );
   }
@@ -401,13 +420,9 @@ const Admin = () => {
   if (!user) {
     return (
       <div style={styles.loginPage}>
-        <div style={styles.loginBackground}></div>
+        <div style={styles.loginCard}>
 
-        <form
-          onSubmit={handleLogin}
-          style={styles.loginCard}
-        >
-          <div style={styles.loginLogo}>
+          <div style={styles.logoCircle}>
             🏨
           </div>
 
@@ -423,45 +438,60 @@ const Admin = () => {
             🔐 Secure Administrator Login
           </div>
 
-          <label style={styles.label}>
-            Email Address
-          </label>
+          <form onSubmit={handleLogin}>
 
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@example.com"
-            required
-            style={styles.input}
-          />
+            <label style={styles.label}>
+              Email Address
+            </label>
 
-          <label style={styles.label}>
-            Password
-          </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@example.com"
+              required
+              style={styles.input}
+            />
 
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            required
-            style={styles.input}
-          />
+            <label style={styles.label}>
+              Password
+            </label>
 
-          <button
-            type="submit"
-            disabled={loginLoading}
-            style={{
-              ...styles.loginButton,
-              opacity: loginLoading ? 0.7 : 1
-            }}
-          >
-            {loginLoading
-              ? 'Signing in...'
-              : 'Sign In'}
-          </button>
-        </form>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              required
+              style={styles.input}
+            />
+
+            {loginError && (
+              <div style={styles.errorBox}>
+                ❌ {loginError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              style={{
+                ...styles.loginButton,
+                opacity: loginLoading ? 0.7 : 1
+              }}
+            >
+              {loginLoading
+                ? 'Signing in...'
+                : 'Sign In'}
+            </button>
+
+          </form>
+
+          <p style={styles.loginFooter}>
+            Z Addis Hotel Management System
+          </p>
+
+        </div>
       </div>
     );
   }
@@ -470,31 +500,30 @@ const Admin = () => {
   // ADMIN DASHBOARD
   // =========================
   return (
-    <div style={styles.page}>
+    <div style={styles.dashboard}>
 
-      {/* HEADER */}
+      {/* TOP HEADER */}
       <header style={styles.header}>
+
         <div>
           <div style={styles.brand}>
-            Z ADDIS
+            🏨 Z ADDIS HOTEL
           </div>
 
-          <div style={styles.brandSub}>
-            HOTEL ADMINISTRATION
+          <div style={styles.headerSubtitle}>
+            Management Dashboard
           </div>
         </div>
 
-        <div style={styles.headerRight}>
-          <div style={styles.adminInfo}>
-            <div style={styles.adminAvatar}>
-              👤
-            </div>
+        <div style={styles.headerActions}>
 
-            <div>
-              <strong>Administrator</strong>
-              <small>{user.email}</small>
-            </div>
-          </div>
+          <button
+            onClick={fetchAllData}
+            style={styles.refreshButton}
+            disabled={dataLoading}
+          >
+            🔄 {dataLoading ? 'Refreshing...' : 'Refresh'}
+          </button>
 
           <button
             onClick={handleLogout}
@@ -502,726 +531,715 @@ const Admin = () => {
           >
             🚪 Logout
           </button>
+
         </div>
+
       </header>
 
-      {/* NAVIGATION */}
-      <nav style={styles.nav}>
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          style={{
-            ...styles.navButton,
-            ...(activeTab === 'dashboard'
-              ? styles.navButtonActive
-              : {})
-          }}
-        >
-          📊 Dashboard
-        </button>
+      {/* ERROR */}
+      {dataError && (
+        <div style={styles.errorBanner}>
+          ⚠️ {dataError}
+        </div>
+      )}
 
-        <button
-          onClick={() => setActiveTab('bookings')}
-          style={{
-            ...styles.navButton,
-            ...(activeTab === 'bookings'
-              ? styles.navButtonActive
-              : {})
-          }}
-        >
-          📅 Bookings
-          <span style={styles.navCount}>
-            {bookings.length}
-          </span>
-        </button>
+      {/* WELCOME */}
+      <section style={styles.welcomeSection}>
 
-        <button
-          onClick={() => setActiveTab('reviews')}
-          style={{
-            ...styles.navButton,
-            ...(activeTab === 'reviews'
-              ? styles.navButtonActive
-              : {})
-          }}
-        >
-          ⭐ Reviews
-          <span style={styles.navCount}>
-            {reviews.length}
-          </span>
-        </button>
+        <div>
+          <h1 style={styles.welcomeTitle}>
+            Welcome back, Admin 👋
+          </h1>
 
-        <button
-          onClick={fetchAllData}
-          style={styles.refreshButton}
-        >
-          🔄 Refresh
-        </button>
-      </nav>
+          <p style={styles.welcomeText}>
+            Manage hotel bookings and customer reviews from one place.
+          </p>
+        </div>
 
-      {/* CONTENT */}
-      <main style={styles.content}>
+        <div style={styles.adminEmail}>
+          👤 {user.email}
+        </div>
 
-        {/* ================= DASHBOARD ================= */}
-        {activeTab === 'dashboard' && (
-          <>
-            <div style={styles.pageHeading}>
-              <div>
-                <h1>Dashboard Overview</h1>
-                <p>
-                  Manage your hotel bookings and customer reviews.
-                </p>
-              </div>
+      </section>
 
-              <div style={styles.liveBadge}>
-                ● LIVE
-              </div>
-            </div>
+      {/* STATISTICS */}
+      <section style={styles.statsGrid}>
 
-            {/* STAT CARDS */}
-            <div style={styles.statsGrid}>
+        <StatCard
+          icon="📅"
+          title="Total Bookings"
+          value={statistics.total}
+          description="All reservations"
+          background="#eff6ff"
+          iconBackground="#2563eb"
+        />
 
-              <div style={styles.statCard}>
-                <div style={styles.statIcon}>📅</div>
+        <StatCard
+          icon="✅"
+          title="Confirmed"
+          value={statistics.confirmed}
+          description="Confirmed reservations"
+          background="#f0fdf4"
+          iconBackground="#16a34a"
+        />
 
-                <div>
-                  <span>Total Bookings</span>
-                  <strong>{stats.total}</strong>
-                </div>
-              </div>
+        <StatCard
+          icon="⏳"
+          title="Pending"
+          value={statistics.pending}
+          description="Waiting for confirmation"
+          background="#fffbeb"
+          iconBackground="#f59e0b"
+        />
 
-              <div style={styles.statCard}>
-                <div style={styles.statIcon}>✅</div>
+        <StatCard
+          icon="⭐"
+          title="Reviews"
+          value={statistics.reviews}
+          description="Customer reviews"
+          background="#fff7ed"
+          iconBackground="#ea580c"
+        />
 
-                <div>
-                  <span>Confirmed</span>
-                  <strong>{stats.confirmed}</strong>
-                </div>
-              </div>
+      </section>
 
-              <div style={styles.statCard}>
-                <div style={styles.statIcon}>⏳</div>
+      {/* MAIN PANEL */}
+      <section style={styles.mainCard}>
 
-                <div>
-                  <span>Pending</span>
-                  <strong>{stats.pending}</strong>
-                </div>
-              </div>
+        {/* TABS */}
+        <div style={styles.tabs}>
 
-              <div style={styles.statCard}>
-                <div style={styles.statIcon}>⭐</div>
+          <button
+            onClick={() => setActiveTab('bookings')}
+            style={{
+              ...styles.tab,
+              ...(activeTab === 'bookings'
+                ? styles.activeTab
+                : {})
+            }}
+          >
+            📅 Bookings
+            <span style={styles.tabCount}>
+              {bookings.length}
+            </span>
+          </button>
 
-                <div>
-                  <span>Reviews</span>
-                  <strong>{reviews.length}</strong>
-                </div>
-              </div>
+          <button
+            onClick={() => setActiveTab('reviews')}
+            style={{
+              ...styles.tab,
+              ...(activeTab === 'reviews'
+                ? styles.activeTab
+                : {})
+            }}
+          >
+            ⭐ Reviews
+            <span style={styles.tabCount}>
+              {reviews.length}
+            </span>
+          </button>
 
-              <div style={styles.statCard}>
-                <div style={styles.statIcon}>💰</div>
-
-                <div>
-                  <span>Confirmed Revenue</span>
-                  <strong style={{ fontSize: '1.2rem' }}>
-                    {formatMoney(stats.revenue)}
-                  </strong>
-                </div>
-              </div>
-
-            </div>
-
-            {/* RECENT BOOKINGS */}
-            <section style={styles.section}>
-              <div style={styles.sectionHeader}>
-                <div>
-                  <h2>Recent Bookings</h2>
-                  <p>Latest hotel reservations</p>
-                </div>
-
-                <button
-                  onClick={() => setActiveTab('bookings')}
-                  style={styles.viewButton}
-                >
-                  View All →
-                </button>
-              </div>
-
-              {loading ? (
-                <LoadingBox />
-              ) : bookings.length === 0 ? (
-                <EmptyBox text="No bookings yet." />
-              ) : (
-                <BookingTable
-                  bookings={bookings.slice(0, 5)}
-                  onConfirm={handleConfirmBooking}
-                  onCancel={handleCancelBooking}
-                  onDelete={handleDeleteBooking}
-                  getStatusStyle={getStatusStyle}
-                  formatMoney={formatMoney}
-                  formatDate={formatDate}
-                  compact
-                />
-              )}
-            </section>
-
-            {/* RECENT REVIEWS */}
-            <section style={styles.section}>
-              <div style={styles.sectionHeader}>
-                <div>
-                  <h2>Customer Reviews</h2>
-                  <p>What your guests are saying</p>
-                </div>
-
-                <button
-                  onClick={() => setActiveTab('reviews')}
-                  style={styles.viewButton}
-                >
-                  View All →
-                </button>
-              </div>
-
-              {reviews.length === 0 ? (
-                <EmptyBox text="No reviews yet." />
-              ) : (
-                <div style={styles.reviewGrid}>
-                  {reviews.slice(0, 4).map((review) => (
-                    <ReviewCard
-                      key={review.id}
-                      review={review}
-                      onDelete={handleDeleteReview}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          </>
-        )}
+        </div>
 
         {/* ================= BOOKINGS ================= */}
         {activeTab === 'bookings' && (
-          <>
-            <div style={styles.pageHeading}>
+          <div>
+
+            <div style={styles.sectionHeader}>
+
               <div>
-                <h1>Hotel Bookings</h1>
-                <p>
-                  View, confirm, cancel and manage reservations.
+                <h2 style={styles.sectionTitle}>
+                  Hotel Bookings
+                </h2>
+
+                <p style={styles.sectionDescription}>
+                  View and manage customer reservations.
                 </p>
               </div>
-            </div>
 
-            {/* SEARCH */}
-            <div style={styles.toolbar}>
-              <div style={styles.searchBox}>
-                🔎
+              <div style={styles.filters}>
+
                 <input
                   type="text"
-                  placeholder="Search by name, phone or room..."
-                  value={bookingSearch}
+                  value={search}
                   onChange={(e) =>
-                    setBookingSearch(e.target.value)
+                    setSearch(e.target.value)
                   }
+                  placeholder="🔎 Search booking..."
+                  style={styles.searchInput}
                 />
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(e.target.value)
+                  }
+                  style={styles.select}
+                >
+                  <option value="All">
+                    All Status
+                  </option>
+
+                  <option value="Pending">
+                    Pending
+                  </option>
+
+                  <option value="Confirmed">
+                    Confirmed
+                  </option>
+
+                  <option value="Cancelled">
+                    Cancelled
+                  </option>
+                </select>
+
               </div>
 
-              <select
-                value={bookingFilter}
-                onChange={(e) =>
-                  setBookingFilter(e.target.value)
-                }
-                style={styles.filterSelect}
-              >
-                <option value="all">
-                  All Bookings
-                </option>
-
-                <option value="pending">
-                  Pending
-                </option>
-
-                <option value="confirmed">
-                  Confirmed
-                </option>
-
-                <option value="cancelled">
-                  Cancelled
-                </option>
-              </select>
             </div>
 
-            {loading ? (
-              <LoadingBox />
+            {dataLoading ? (
+              <LoadingData />
             ) : filteredBookings.length === 0 ? (
-              <EmptyBox text="No bookings found." />
+              <EmptyState
+                icon="📅"
+                title="No bookings found"
+                text="There are no bookings matching your search."
+              />
             ) : (
-              <section style={styles.tableCard}>
-                <BookingTable
-                  bookings={filteredBookings}
-                  onConfirm={handleConfirmBooking}
-                  onCancel={handleCancelBooking}
-                  onDelete={handleDeleteBooking}
-                  getStatusStyle={getStatusStyle}
-                  formatMoney={formatMoney}
-                  formatDate={formatDate}
-                />
-              </section>
+              <div style={styles.tableWrapper}>
+
+                <table style={styles.table}>
+
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>
+                        Guest
+                      </th>
+
+                      <th style={styles.th}>
+                        Room
+                      </th>
+
+                      <th style={styles.th}>
+                        Guests
+                      </th>
+
+                      <th style={styles.th}>
+                        Stay
+                      </th>
+
+                      <th style={styles.th}>
+                        Status
+                      </th>
+
+                      <th style={styles.th}>
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+
+                    {filteredBookings.map((booking) => {
+
+                      const statusStyle =
+                        getStatusStyle(
+                          booking.status
+                        );
+
+                      return (
+                        <tr
+                          key={booking.id}
+                          style={styles.tr}
+                        >
+
+                          {/* GUEST */}
+                          <td style={styles.td}>
+
+                            <div style={styles.guestName}>
+                              {booking.name ||
+                                'Unknown Guest'}
+                            </div>
+
+                            <div style={styles.phone}>
+                              📞 {booking.phone ||
+                                'No phone'}
+                            </div>
+
+                          </td>
+
+                          {/* ROOM */}
+                          <td style={styles.td}>
+
+                            <div style={styles.roomName}>
+                              {booking.room ||
+                                'Room'}
+                            </div>
+
+                            {booking.price && (
+                              <div style={styles.price}>
+                                💰 {booking.price}
+                              </div>
+                            )}
+
+                          </td>
+
+                          {/* GUEST COUNT */}
+                          <td style={styles.td}>
+
+                            <div>
+                              👨 Adults:{' '}
+                              {booking.adults ||
+                                1}
+                            </div>
+
+                            <div>
+                              👶 Children:{' '}
+                              {booking.children ||
+                                0}
+                            </div>
+
+                            {booking.rooms && (
+                              <div>
+                                🛏 Rooms:{' '}
+                                {booking.rooms}
+                              </div>
+                            )}
+
+                          </td>
+
+                          {/* DATES */}
+                          <td style={styles.td}>
+
+                            <div style={styles.date}>
+                              📅{' '}
+                              {booking.checkIn ||
+                                '-'}
+                            </div>
+
+                            <div style={styles.date}>
+                              🏁{' '}
+                              {booking.checkOut ||
+                                '-'}
+                            </div>
+
+                          </td>
+
+                          {/* STATUS */}
+                          <td style={styles.td}>
+
+                            <span
+                              style={{
+                                ...styles.statusBadge,
+                                background:
+                                  statusStyle.background,
+                                color:
+                                  statusStyle.color
+                              }}
+                            >
+                              {getStatus(
+                                booking.status
+                              )}
+                            </span>
+
+                          </td>
+
+                          {/* ACTIONS */}
+                          <td style={styles.td}>
+
+                            <div style={styles.actionGroup}>
+
+                              {getStatus(
+                                booking.status
+                              ) !== 'Confirmed' && (
+                                <button
+                                  onClick={() =>
+                                    confirmBooking(
+                                      booking.id
+                                    )
+                                  }
+                                  style={
+                                    styles.confirmButton
+                                  }
+                                >
+                                  ✓ Confirm
+                                </button>
+                              )}
+
+                              {getStatus(
+                                booking.status
+                              ) !== 'Cancelled' && (
+                                <button
+                                  onClick={() =>
+                                    cancelBooking(
+                                      booking.id
+                                    )
+                                  }
+                                  style={
+                                    styles.cancelButton
+                                  }
+                                >
+                                  × Cancel
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() =>
+                                  deleteBooking(
+                                    booking.id
+                                  )
+                                }
+                                style={
+                                  styles.deleteButton
+                                }
+                              >
+                                🗑 Delete
+                              </button>
+
+                            </div>
+
+                          </td>
+
+                        </tr>
+                      );
+                    })}
+
+                  </tbody>
+
+                </table>
+
+              </div>
             )}
-          </>
+
+          </div>
         )}
 
         {/* ================= REVIEWS ================= */}
         {activeTab === 'reviews' && (
-          <>
-            <div style={styles.pageHeading}>
+          <div>
+
+            <div style={styles.sectionHeader}>
+
               <div>
-                <h1>Customer Reviews</h1>
-                <p>
-                  Manage feedback from your hotel guests.
+                <h2 style={styles.sectionTitle}>
+                  Customer Reviews
+                </h2>
+
+                <p style={styles.sectionDescription}>
+                  Review and manage customer feedback.
                 </p>
               </div>
+
             </div>
 
-            {reviews.length === 0 ? (
-              <EmptyBox text="No customer reviews yet." />
+            {dataLoading ? (
+              <LoadingData />
+            ) : reviews.length === 0 ? (
+              <EmptyState
+                icon="⭐"
+                title="No reviews yet"
+                text="Customer reviews will appear here."
+              />
             ) : (
-              <div style={styles.reviewGridLarge}>
-                {reviews.map((review) => (
-                  <ReviewCard
-                    key={review.id}
-                    review={review}
-                    onDelete={handleDeleteReview}
-                  />
-                ))}
+              <div style={styles.reviewGrid}>
+
+                {reviews.map((review) => {
+
+                  const rating =
+                    Math.min(
+                      5,
+                      Math.max(
+                        0,
+                        Number(review.rating) || 5
+                      )
+                    );
+
+                  return (
+                    <div
+                      key={review.id}
+                      style={styles.reviewCard}
+                    >
+
+                      <div style={styles.reviewTop}>
+
+                        <div style={styles.avatar}>
+                          {getReviewName(
+                            review
+                          )
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+
+                        <div>
+
+                          <h3
+                            style={
+                              styles.reviewerName
+                            }
+                          >
+                            {getReviewName(
+                              review
+                            )}
+                          </h3>
+
+                          <div
+                            style={
+                              styles.stars
+                            }
+                          >
+                            {'★'.repeat(
+                              rating
+                            )}
+                            {'☆'.repeat(
+                              5 - rating
+                            )}
+                          </div>
+
+                        </div>
+
+                      </div>
+
+                      <p style={styles.reviewText}>
+                        "{getReviewText(
+                          review
+                        )}"
+                      </p>
+
+                      <button
+                        onClick={() =>
+                          deleteReview(
+                            review.id
+                          )
+                        }
+                        style={
+                          styles.reviewDelete
+                        }
+                      >
+                        🗑 Delete Review
+                      </button>
+
+                    </div>
+                  );
+                })}
+
               </div>
             )}
-          </>
+
+          </div>
         )}
 
-      </main>
+      </section>
 
       {/* FOOTER */}
       <footer style={styles.footer}>
-        <span>
+        <div>
           © {new Date().getFullYear()} Z Addis Hotel
-        </span>
-
-        <span>
-          Admin Dashboard
-        </span>
-      </footer>
-    </div>
-  );
-};
-
-
-// =====================================================
-// BOOKING TABLE COMPONENT
-// =====================================================
-
-const BookingTable = ({
-  bookings,
-  onConfirm,
-  onCancel,
-  onDelete,
-  getStatusStyle,
-  formatMoney,
-  formatDate,
-  compact = false
-}) => {
-  return (
-    <div style={styles.tableWrapper}>
-      <table style={styles.table}>
-
-        <thead>
-          <tr>
-            <th>Guest</th>
-            <th>Room</th>
-            {!compact && <th>Guests</th>}
-            <th>Stay</th>
-            <th>Status</th>
-            <th>Total</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {bookings.map((booking) => {
-
-            const statusStyle = getStatusStyle(
-              booking.status
-            );
-
-            const adults =
-              Number(booking.adults) || 0;
-
-            const children =
-              Number(booking.children) || 0;
-
-            const rooms =
-              Number(booking.rooms) || 1;
-
-            return (
-              <tr key={booking.id}>
-
-                {/* GUEST */}
-                <td>
-                  <div style={styles.guestCell}>
-                    <div style={styles.guestAvatar}>
-                      {String(
-                        booking.name || 'G'
-                      )
-                        .charAt(0)
-                        .toUpperCase()}
-                    </div>
-
-                    <div>
-                      <strong>
-                        {booking.name || 'Guest'}
-                      </strong>
-
-                      <small>
-                        {booking.phone || '-'}
-                      </small>
-                    </div>
-                  </div>
-                </td>
-
-                {/* ROOM */}
-                <td>
-                  <strong>
-                    {booking.room || '-'}
-                  </strong>
-
-                  <small style={styles.tableSmall}>
-                    {rooms} room
-                    {rooms > 1 ? 's' : ''}
-                  </small>
-                </td>
-
-                {/* GUEST COUNT */}
-                {!compact && (
-                  <td>
-                    <div style={styles.guestNumbers}>
-                      <span>
-                        👨 {adults} Adults
-                      </span>
-
-                      <span>
-                        👶 {children} Children
-                      </span>
-                    </div>
-                  </td>
-                )}
-
-                {/* DATES */}
-                <td>
-                  <div style={styles.dateCell}>
-                    <strong>
-                      {formatDate(booking.checkIn)}
-                    </strong>
-
-                    <span>→</span>
-
-                    <strong>
-                      {formatDate(booking.checkOut)}
-                    </strong>
-                  </div>
-
-                  {booking.nights && (
-                    <small style={styles.tableSmall}>
-                      {booking.nights} night
-                      {Number(booking.nights) > 1
-                        ? 's'
-                        : ''}
-                    </small>
-                  )}
-                </td>
-
-                {/* STATUS */}
-                <td>
-                  <span
-                    style={{
-                      ...styles.statusBadge,
-                      background:
-                        statusStyle.background,
-                      color:
-                        statusStyle.color
-                    }}
-                  >
-                    {booking.status ||
-                      'Pending'}
-                  </span>
-                </td>
-
-                {/* PRICE */}
-                <td>
-                  <strong>
-                    {formatMoney(
-                      booking.totalPrice
-                    )}
-                  </strong>
-                </td>
-
-                {/* ACTIONS */}
-                <td>
-                  <div style={styles.actions}>
-
-                    {!String(
-                      booking.status || ''
-                    )
-                      .toLowerCase()
-                      .includes('confirmed') && (
-                      <button
-                        title="Confirm booking"
-                        onClick={() =>
-                          onConfirm(booking.id)
-                        }
-                        style={
-                          styles.confirmButton
-                        }
-                      >
-                        ✓
-                      </button>
-                    )}
-
-                    {!String(
-                      booking.status || ''
-                    )
-                      .toLowerCase()
-                      .includes('cancelled') && (
-                      <button
-                        title="Cancel booking"
-                        onClick={() =>
-                          onCancel(booking.id)
-                        }
-                        style={
-                          styles.cancelButton
-                        }
-                      >
-                        ×
-                      </button>
-                    )}
-
-                    <button
-                      title="Delete booking"
-                      onClick={() =>
-                        onDelete(booking.id)
-                      }
-                      style={
-                        styles.deleteButton
-                      }
-                    >
-                      🗑
-                    </button>
-
-                  </div>
-                </td>
-
-              </tr>
-            );
-          })}
-        </tbody>
-
-      </table>
-    </div>
-  );
-};
-
-
-// =====================================================
-// REVIEW CARD
-// =====================================================
-
-const ReviewCard = ({ review, onDelete }) => {
-  const rating = Math.min(
-    5,
-    Math.max(
-      0,
-      Number(review.rating) || 5
-    )
-  );
-
-  const reviewer =
-    review.name ||
-    review.userName ||
-    'Anonymous';
-
-  const comment =
-    review.text ||
-    review.comment ||
-    review.reviewText ||
-    'No comment';
-
-  return (
-    <div style={styles.reviewCard}>
-
-      <div style={styles.reviewTop}>
-        <div style={styles.reviewer}>
-          <div style={styles.reviewerAvatar}>
-            {String(reviewer)
-              .charAt(0)
-              .toUpperCase()}
-          </div>
-
-          <div>
-            <strong>{reviewer}</strong>
-
-            <div style={styles.stars}>
-              {'★'.repeat(rating)}
-              {'☆'.repeat(5 - rating)}
-            </div>
-          </div>
         </div>
 
-        <button
-          onClick={() => onDelete(review.id)}
-          style={styles.reviewDelete}
-          title="Delete review"
-        >
-          🗑
-        </button>
-      </div>
-
-      <p style={styles.reviewText}>
-        “{comment}”
-      </p>
-
-      {review.createdAt && (
-        <small style={styles.reviewDate}>
-          {new Date(
-            review.createdAt
-          ).toLocaleDateString()}
-        </small>
-      )}
+        <div>
+          Admin Management System
+        </div>
+      </footer>
 
     </div>
   );
 };
 
+// ======================================================
+// STAT CARD
+// ======================================================
 
-// =====================================================
-// LOADING BOX
-// =====================================================
+const StatCard = ({
+  icon,
+  title,
+  value,
+  description,
+  background,
+  iconBackground
+}) => {
+  return (
+    <div
+      style={{
+        ...styles.statCard,
+        background
+      }}
+    >
 
-const LoadingBox = () => (
-  <div style={styles.emptyBox}>
-    <div style={styles.loadingSpinner}>⏳</div>
-    <h3>Loading data...</h3>
-    <p>Please wait a moment.</p>
-  </div>
-);
+      <div
+        style={{
+          ...styles.statIcon,
+          background: iconBackground
+        }}
+      >
+        {icon}
+      </div>
 
+      <div style={{ flex: 1 }}>
 
-// =====================================================
-// EMPTY BOX
-// =====================================================
+        <div style={styles.statTitle}>
+          {title}
+        </div>
 
-const EmptyBox = ({ text }) => (
-  <div style={styles.emptyBox}>
-    <div style={styles.emptyIcon}>📭</div>
-    <h3>{text}</h3>
-    <p>There is nothing to display here yet.</p>
-  </div>
-);
+        <div style={styles.statValue}>
+          {value}
+        </div>
 
+        <div style={styles.statDescription}>
+          {description}
+        </div>
 
-// =====================================================
+      </div>
+
+    </div>
+  );
+};
+
+// ======================================================
+// LOADING
+// ======================================================
+
+const LoadingData = () => {
+  return (
+    <div style={styles.loadingData}>
+      <div style={styles.spinner}></div>
+      <p>Loading data...</p>
+    </div>
+  );
+};
+
+// ======================================================
+// EMPTY
+// ======================================================
+
+const EmptyState = ({
+  icon,
+  title,
+  text
+}) => {
+  return (
+    <div style={styles.emptyState}>
+
+      <div style={styles.emptyIcon}>
+        {icon}
+      </div>
+
+      <h3>{title}</h3>
+
+      <p>{text}</p>
+
+    </div>
+  );
+};
+
+// ======================================================
 // STYLES
-// =====================================================
+// ======================================================
 
 const styles = {
 
-  // PAGE
-  page: {
+  fullScreen: {
     minHeight: '100vh',
-    background:
-      'linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%)',
-    color: '#1e293b',
+    background: '#f8fafc',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     fontFamily:
       "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
   },
 
+  loaderBox: {
+    textAlign: 'center',
+    color: '#334155'
+  },
+
+  spinner: {
+    width: '42px',
+    height: '42px',
+    border: '4px solid #e2e8f0',
+    borderTop: '4px solid #e67e22',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+    margin: '0 auto'
+  },
+
   // LOGIN
+
   loginPage: {
     minHeight: '100vh',
+    background:
+      'linear-gradient(135deg, #0f172a, #1e293b)',
     display: 'flex',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     padding: '20px',
-    background:
-      'linear-gradient(135deg, #0f172a, #1e293b)'
-  },
-
-  loginBackground: {
-    position: 'fixed',
-    inset: 0,
-    background:
-      'radial-gradient(circle at top right, rgba(230,126,34,0.25), transparent 35%)',
-    pointerEvents: 'none'
-  },
-
-  loginCard: {
-    position: 'relative',
-    width: '100%',
-    maxWidth: '430px',
-    background: 'rgba(255,255,255,0.98)',
-    padding: '45px',
-    borderRadius: '24px',
-    boxShadow:
-      '0 30px 80px rgba(0,0,0,0.35)',
+    fontFamily:
+      "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
     boxSizing: 'border-box'
   },
 
-  loginLogo: {
-    width: '75px',
-    height: '75px',
-    margin: '0 auto 20px',
-    borderRadius: '22px',
+  loginCard: {
+    width: '100%',
+    maxWidth: '430px',
+    background: '#ffffff',
+    borderRadius: '24px',
+    padding: '42px',
+    boxShadow:
+      '0 25px 70px rgba(0,0,0,0.35)',
+    boxSizing: 'border-box'
+  },
+
+  logoCircle: {
+    width: '72px',
+    height: '72px',
+    borderRadius: '50%',
     background:
       'linear-gradient(135deg, #e67e22, #f39c12)',
     display: 'flex',
-    justifyContent: 'center',
     alignItems: 'center',
-    fontSize: '2.2rem'
+    justifyContent: 'center',
+    fontSize: '34px',
+    margin: '0 auto 20px'
   },
 
   loginTitle: {
     textAlign: 'center',
     margin: 0,
     color: '#0f172a',
-    fontSize: '2rem'
+    fontSize: '28px'
   },
 
   loginSubtitle: {
     textAlign: 'center',
     color: '#64748b',
-    marginTop: '8px',
-    marginBottom: '20px'
+    marginTop: '8px'
   },
 
   secureBadge: {
-    textAlign: 'center',
     background: '#fff7ed',
     color: '#c2410c',
     padding: '10px',
     borderRadius: '10px',
-    fontSize: '0.85rem',
+    textAlign: 'center',
+    fontSize: '13px',
     fontWeight: '600',
-    marginBottom: '25px'
+    margin: '25px 0'
   },
 
   label: {
     display: 'block',
-    marginBottom: '7px',
     color: '#334155',
     fontWeight: '600',
-    fontSize: '0.9rem'
+    fontSize: '14px',
+    marginBottom: '7px'
   },
 
   input: {
     width: '100%',
-    padding: '14px 15px',
-    marginBottom: '18px',
+    padding: '14px',
     border: '1px solid #cbd5e1',
     borderRadius: '10px',
-    fontSize: '1rem',
+    fontSize: '15px',
+    marginBottom: '18px',
     boxSizing: 'border-box',
     outline: 'none'
   },
@@ -1230,244 +1248,256 @@ const styles = {
     width: '100%',
     padding: '15px',
     border: 'none',
-    borderRadius: '11px',
+    borderRadius: '10px',
     background:
       'linear-gradient(135deg, #e67e22, #f39c12)',
     color: '#fff',
+    fontSize: '16px',
     fontWeight: '700',
-    fontSize: '1rem',
     cursor: 'pointer'
   },
 
-  // HEADER
+  loginFooter: {
+    textAlign: 'center',
+    color: '#94a3b8',
+    fontSize: '12px',
+    marginTop: '25px',
+    marginBottom: 0
+  },
+
+  errorBox: {
+    background: '#fee2e2',
+    color: '#b91c1c',
+    padding: '12px',
+    borderRadius: '8px',
+    marginBottom: '15px',
+    fontSize: '13px'
+  },
+
+  // DASHBOARD
+
+  dashboard: {
+    minHeight: '100vh',
+    background: '#f8fafc',
+    fontFamily:
+      "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+    color: '#0f172a',
+    paddingBottom: '40px'
+  },
+
   header: {
-    background:
-      'linear-gradient(135deg, #0f172a, #1e293b)',
+    background: '#0f172a',
     color: '#fff',
     padding: '20px 5%',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: '20px',
-    flexWrap: 'wrap',
-    boxShadow:
-      '0 5px 25px rgba(15,23,42,0.18)'
-  },
-
-  brand: {
-    fontSize: '1.5rem',
-    fontWeight: '900',
-    letterSpacing: '3px',
-    color: '#f39c12'
-  },
-
-  brandSub: {
-    fontSize: '0.65rem',
-    letterSpacing: '2px',
-    color: '#cbd5e1',
-    marginTop: '3px'
-  },
-
-  headerRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '15px',
     flexWrap: 'wrap'
   },
 
-  adminInfo: {
+  brand: {
+    fontSize: '22px',
+    fontWeight: '800',
+    letterSpacing: '0.5px'
+  },
+
+  headerSubtitle: {
+    color: '#94a3b8',
+    fontSize: '13px',
+    marginTop: '4px'
+  },
+
+  headerActions: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
-  },
-
-  adminAvatar: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '50%',
-    background: '#334155',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-
-  logoutButton: {
-    padding: '10px 15px',
-    border: '1px solid #475569',
-    background: 'transparent',
-    color: '#fff',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontWeight: '600'
-  },
-
-  // NAV
-  nav: {
-    background: '#fff',
-    padding: '10px 5%',
-    display: 'flex',
-    gap: '8px',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    borderBottom: '1px solid #e2e8f0'
-  },
-
-  navButton: {
-    border: 'none',
-    background: 'transparent',
-    padding: '10px 15px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    color: '#64748b',
-    fontWeight: '600'
-  },
-
-  navButtonActive: {
-    background: '#fff7ed',
-    color: '#ea580c'
-  },
-
-  navCount: {
-    marginLeft: '7px',
-    background: '#e2e8f0',
-    color: '#475569',
-    borderRadius: '20px',
-    padding: '2px 7px',
-    fontSize: '0.7rem'
+    gap: '10px',
+    flexWrap: 'wrap'
   },
 
   refreshButton: {
-    marginLeft: 'auto',
-    padding: '10px 15px',
-    border: 'none',
-    background: '#2563eb',
+    padding: '10px 16px',
+    border: '1px solid #475569',
+    background: '#1e293b',
     color: '#fff',
-    borderRadius: '8px',
+    borderRadius: '9px',
     cursor: 'pointer',
     fontWeight: '600'
   },
 
-  // CONTENT
-  content: {
-    width: '90%',
-    maxWidth: '1500px',
-    margin: '0 auto',
-    padding: '35px 0 60px'
+  logoutButton: {
+    padding: '10px 16px',
+    border: 'none',
+    background: '#ef4444',
+    color: '#fff',
+    borderRadius: '9px',
+    cursor: 'pointer',
+    fontWeight: '600'
   },
 
-  pageHeading: {
+  errorBanner: {
+    margin: '20px 5% 0',
+    background: '#fee2e2',
+    color: '#991b1b',
+    padding: '14px 18px',
+    borderRadius: '10px'
+  },
+
+  welcomeSection: {
+    margin: '35px 5% 25px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '30px',
-    gap: '20px'
+    gap: '20px',
+    flexWrap: 'wrap'
   },
 
-  liveBadge: {
-    background: '#dcfce7',
-    color: '#15803d',
-    padding: '8px 14px',
-    borderRadius: '30px',
-    fontSize: '0.75rem',
-    fontWeight: '800'
+  welcomeTitle: {
+    margin: 0,
+    fontSize: '30px'
   },
 
-  // STATS
+  welcomeText: {
+    margin: '8px 0 0',
+    color: '#64748b'
+  },
+
+  adminEmail: {
+    background: '#fff',
+    padding: '12px 18px',
+    borderRadius: '12px',
+    boxShadow:
+      '0 4px 20px rgba(15,23,42,0.06)',
+    color: '#475569',
+    fontSize: '14px'
+  },
+
   statsGrid: {
+    margin: '0 5% 30px',
     display: 'grid',
     gridTemplateColumns:
-      'repeat(auto-fit, minmax(190px, 1fr))',
-    gap: '18px',
-    marginBottom: '35px'
+      'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '18px'
   },
 
   statCard: {
-    background: '#fff',
     borderRadius: '18px',
     padding: '22px',
     display: 'flex',
     alignItems: 'center',
-    gap: '15px',
+    gap: '17px',
     boxShadow:
-      '0 8px 30px rgba(15,23,42,0.06)',
-    border: '1px solid #eef2f7'
+      '0 5px 20px rgba(15,23,42,0.05)'
   },
 
   statIcon: {
-    width: '52px',
-    height: '52px',
-    borderRadius: '14px',
-    background: '#fff7ed',
+    width: '55px',
+    height: '55px',
+    borderRadius: '15px',
     display: 'flex',
-    justifyContent: 'center',
     alignItems: 'center',
-    fontSize: '1.5rem'
+    justifyContent: 'center',
+    fontSize: '25px',
+    color: '#fff',
+    flexShrink: 0
   },
 
-  // SECTION
-  section: {
+  statTitle: {
+    color: '#64748b',
+    fontSize: '13px',
+    fontWeight: '600'
+  },
+
+  statValue: {
+    fontSize: '30px',
+    fontWeight: '800',
+    marginTop: '3px'
+  },
+
+  statDescription: {
+    color: '#94a3b8',
+    fontSize: '12px'
+  },
+
+  mainCard: {
     background: '#fff',
+    margin: '0 5%',
     borderRadius: '20px',
-    padding: '25px',
-    marginBottom: '30px',
     boxShadow:
       '0 8px 30px rgba(15,23,42,0.06)',
     overflow: 'hidden'
+  },
+
+  tabs: {
+    display: 'flex',
+    borderBottom: '1px solid #e2e8f0',
+    padding: '0 25px',
+    gap: '8px'
+  },
+
+  tab: {
+    padding: '18px 20px',
+    border: 'none',
+    background: 'transparent',
+    color: '#64748b',
+    fontWeight: '700',
+    fontSize: '15px',
+    cursor: 'pointer',
+    borderBottom: '3px solid transparent'
+  },
+
+  activeTab: {
+    color: '#e67e22',
+    borderBottom: '3px solid #e67e22'
+  },
+
+  tabCount: {
+    marginLeft: '8px',
+    background: '#f1f5f9',
+    padding: '3px 8px',
+    borderRadius: '20px',
+    fontSize: '11px'
   },
 
   sectionHeader: {
+    padding: '25px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '20px',
-    gap: '15px'
-  },
-
-  viewButton: {
-    border: 'none',
-    background: '#fff7ed',
-    color: '#ea580c',
-    padding: '9px 14px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontWeight: '700'
-  },
-
-  // TOOLBAR
-  toolbar: {
-    display: 'flex',
-    gap: '12px',
-    marginBottom: '20px',
+    gap: '20px',
     flexWrap: 'wrap'
   },
 
-  searchBox: {
-    flex: 1,
-    minWidth: '250px',
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    padding: '0 15px',
+  sectionTitle: {
+    margin: 0,
+    fontSize: '21px'
+  },
+
+  sectionDescription: {
+    margin: '5px 0 0',
+    color: '#64748b',
+    fontSize: '13px'
+  },
+
+  filters: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
+    gap: '10px',
+    flexWrap: 'wrap'
   },
 
-  filterSelect: {
-    padding: '12px 15px',
-    borderRadius: '10px',
-    border: '1px solid #e2e8f0',
-    background: '#fff',
-    minWidth: '160px'
+  searchInput: {
+    padding: '11px 14px',
+    border: '1px solid #cbd5e1',
+    borderRadius: '9px',
+    minWidth: '220px',
+    outline: 'none'
   },
 
-  // TABLE
-  tableCard: {
+  select: {
+    padding: '11px 14px',
+    border: '1px solid #cbd5e1',
+    borderRadius: '9px',
     background: '#fff',
-    borderRadius: '20px',
-    boxShadow:
-      '0 8px 30px rgba(15,23,42,0.06)',
-    overflow: 'hidden'
+    cursor: 'pointer'
   },
 
   tableWrapper: {
@@ -1477,19 +1507,130 @@ const styles = {
 
   table: {
     width: '100%',
-    minWidth: '950px',
-    borderCollapse: 'collapse'
+    borderCollapse: 'collapse',
+    minWidth: '950px'
   },
 
-  guestCell: {
+  th: {
+    background: '#f8fafc',
+    color: '#475569',
+    fontSize: '12px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    padding: '14px 18px',
+    textAlign: 'left',
+    borderBottom: '1px solid #e2e8f0'
+  },
+
+  tr: {
+    borderBottom: '1px solid #f1f5f9'
+  },
+
+  td: {
+    padding: '16px 18px',
+    verticalAlign: 'middle',
+    fontSize: '13px'
+  },
+
+  guestName: {
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: '5px'
+  },
+
+  phone: {
+    color: '#64748b',
+    fontSize: '12px'
+  },
+
+  roomName: {
+    fontWeight: '700'
+  },
+
+  price: {
+    color: '#e67e22',
+    fontSize: '12px',
+    marginTop: '4px'
+  },
+
+  date: {
+    fontSize: '12px',
+    marginBottom: '5px',
+    color: '#475569'
+  },
+
+  statusBadge: {
+    padding: '6px 10px',
+    borderRadius: '20px',
+    fontSize: '11px',
+    fontWeight: '800'
+  },
+
+  actionGroup: {
+    display: 'flex',
+    gap: '5px',
+    flexWrap: 'wrap'
+  },
+
+  confirmButton: {
+    background: '#16a34a',
+    color: '#fff',
+    border: 'none',
+    padding: '7px 9px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '11px',
+    fontWeight: '700'
+  },
+
+  cancelButton: {
+    background: '#f59e0b',
+    color: '#fff',
+    border: 'none',
+    padding: '7px 9px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '11px',
+    fontWeight: '700'
+  },
+
+  deleteButton: {
+    background: '#ef4444',
+    color: '#fff',
+    border: 'none',
+    padding: '7px 9px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '11px',
+    fontWeight: '700'
+  },
+
+  // REVIEWS
+
+  reviewGrid: {
+    padding: '0 25px 30px',
+    display: 'grid',
+    gridTemplateColumns:
+      'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '18px'
+  },
+
+  reviewCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '16px',
+    padding: '20px',
+    background: '#fff'
+  },
+
+  reviewTop: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px'
+    gap: '12px'
   },
 
-  guestAvatar: {
-    width: '38px',
-    height: '38px',
+  avatar: {
+    width: '45px',
+    height: '45px',
     borderRadius: '50%',
     background:
       'linear-gradient(135deg, #e67e22, #f39c12)',
@@ -1497,190 +1638,66 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontWeight: '800'
-  },
-
-  tableSmall: {
-    display: 'block',
-    color: '#94a3b8',
-    fontSize: '0.75rem',
-    marginTop: '3px'
-  },
-
-  guestNumbers: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-    fontSize: '0.8rem'
-  },
-
-  dateCell: {
-    display: 'flex',
-    gap: '7px',
-    alignItems: 'center',
-    whiteSpace: 'nowrap'
-  },
-
-  statusBadge: {
-    display: 'inline-block',
-    padding: '6px 10px',
-    borderRadius: '30px',
-    fontSize: '0.75rem',
     fontWeight: '800',
-    whiteSpace: 'nowrap'
+    fontSize: '18px'
   },
 
-  actions: {
-    display: 'flex',
-    gap: '5px'
-  },
-
-  confirmButton: {
-    width: '32px',
-    height: '32px',
-    border: 'none',
-    borderRadius: '7px',
-    background: '#16a34a',
-    color: '#fff',
-    cursor: 'pointer',
-    fontWeight: 'bold'
-  },
-
-  cancelButton: {
-    width: '32px',
-    height: '32px',
-    border: 'none',
-    borderRadius: '7px',
-    background: '#f59e0b',
-    color: '#fff',
-    cursor: 'pointer',
-    fontWeight: 'bold'
-  },
-
-  deleteButton: {
-    width: '32px',
-    height: '32px',
-    border: 'none',
-    borderRadius: '7px',
-    background: '#ef4444',
-    color: '#fff',
-    cursor: 'pointer'
-  },
-
-  // REVIEWS
-  reviewGrid: {
-    display: 'grid',
-    gridTemplateColumns:
-      'repeat(auto-fit, minmax(250px, 1fr))',
-    gap: '15px'
-  },
-
-  reviewGridLarge: {
-    display: 'grid',
-    gridTemplateColumns:
-      'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '20px'
-  },
-
-  reviewCard: {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '16px',
-    padding: '20px',
-    boxShadow:
-      '0 5px 20px rgba(15,23,42,0.04)'
-  },
-
-  reviewTop: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: '10px'
-  },
-
-  reviewer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
-  },
-
-  reviewerAvatar: {
-    width: '42px',
-    height: '42px',
-    borderRadius: '50%',
-    background: '#fff7ed',
-    color: '#ea580c',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: '800'
+  reviewerName: {
+    margin: 0,
+    fontSize: '15px'
   },
 
   stars: {
     color: '#f59e0b',
-    fontSize: '0.9rem',
-    marginTop: '3px'
+    marginTop: '4px',
+    letterSpacing: '2px'
   },
 
   reviewText: {
     color: '#475569',
     lineHeight: '1.7',
-    fontSize: '0.9rem',
-    margin: '20px 0 10px'
-  },
-
-  reviewDate: {
-    color: '#94a3b8'
+    fontSize: '14px',
+    minHeight: '65px'
   },
 
   reviewDelete: {
-    border: 'none',
+    width: '100%',
+    padding: '9px',
     background: '#fee2e2',
-    color: '#dc2626',
-    width: '32px',
-    height: '32px',
-    borderRadius: '7px',
-    cursor: 'pointer'
+    color: '#b91c1c',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '700'
   },
 
-  // EMPTY
-  emptyBox: {
-    background: '#fff',
-    borderRadius: '18px',
-    padding: '60px 20px',
+  loadingData: {
+    padding: '60px',
     textAlign: 'center',
-    boxShadow:
-      '0 8px 30px rgba(15,23,42,0.05)'
+    color: '#64748b'
+  },
+
+  emptyState: {
+    padding: '70px 20px',
+    textAlign: 'center',
+    color: '#64748b'
   },
 
   emptyIcon: {
-    fontSize: '3rem'
+    fontSize: '50px',
+    marginBottom: '15px'
   },
 
-  loadingSpinner: {
-    fontSize: '2rem'
-  },
-
-  // FOOTER
   footer: {
-    background: '#0f172a',
+    margin: '30px 5% 0',
+    padding: '20px 0',
+    borderTop: '1px solid #e2e8f0',
     color: '#94a3b8',
-    padding: '20px 5%',
     display: 'flex',
     justifyContent: 'space-between',
     gap: '15px',
     flexWrap: 'wrap',
-    fontSize: '0.8rem'
-  },
-
-  fullScreenLoader: {
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: '#f8fafc',
-    color: '#334155'
+    fontSize: '12px'
   }
 };
 
