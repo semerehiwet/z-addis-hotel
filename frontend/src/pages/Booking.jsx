@@ -1,68 +1,67 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
 
 const Booking = ({ lang }) => {
-
   const isAm = lang === 'am';
 
   // =========================
-  // ROOM DATA
+  // ROOM INFORMATION
   // =========================
 
-  const roomDetails = {
+  const rooms = {
     'Standard Room': {
-      nameAm: 'ስታንዳርድ ክፍል',
-      nameEn: 'Standard Room',
+      am: 'ስታንዳርድ ክፍል',
+      en: 'Standard Room',
       price: 1500,
       capacity: 2,
       bedsAm: '1 Queen Size Bed',
       bedsEn: '1 Queen Size Bed',
-      amenitiesAm: 'ነፃ Wi-Fi፣ ሙቅ ውሃ፣ TV፣ የስራ ጠረጴዛ',
-      amenitiesEn: 'Free Wi-Fi, Hot Shower, TV, Work Desk',
-      image: '/r1.jpg'
+      image: '/r1.jpg',
+      featuresAm: 'ነፃ Wi-Fi • ሙቅ ውሃ • TV • የስራ ቦታ',
+      featuresEn: 'Free Wi-Fi • Hot Shower • TV • Work Desk'
     },
 
     'Twin Room': {
-      nameAm: 'ትዊን ክፍል',
-      nameEn: 'Twin Room',
+      am: 'ትዊን ክፍል',
+      en: 'Twin Room',
       price: 2000,
       capacity: 2,
-      bedsAm: '2 Twin Beds',
-      bedsEn: '2 Twin Beds',
-      amenitiesAm: 'ነፃ Wi-Fi፣ Balcony፣ ለቤተሰብ ምቹ',
-      amenitiesEn: 'Free Wi-Fi, Balcony, Ideal for family',
-      image: '/r2.jpg'
+      bedsAm: '2 Single Beds',
+      bedsEn: '2 Single Beds',
+      image: '/r2.jpg',
+      featuresAm: 'ነፃ Wi-Fi • Balcony • TV • ለቤተሰብ ምቹ',
+      featuresEn: 'Free Wi-Fi • Balcony • TV • Family Friendly'
     },
 
     'Deluxe Room': {
-      nameAm: 'ዴሉክስ ክፍል',
-      nameEn: 'Deluxe Room',
+      am: 'ዴሉክስ ክፍል',
+      en: 'Deluxe Room',
       price: 3000,
       capacity: 3,
       bedsAm: '1 King Size Bed',
       bedsEn: '1 King Size Bed',
-      amenitiesAm: 'Mini Bar፣ City View፣ Jacuzzi፣ Luxury Decor',
-      amenitiesEn: 'Mini Bar, City View, Jacuzzi, Luxury Decor',
-      image: '/r3.jpg'
+      image: '/r3.jpg',
+      featuresAm: 'Mini Bar • City View • Jacuzzi • Luxury Decor',
+      featuresEn: 'Mini Bar • City View • Jacuzzi • Luxury Decor'
     },
 
     'Presidential Suite': {
-      nameAm: 'ፕሬዝዳንሻል ስዊት',
-      nameEn: 'Presidential Suite',
+      am: 'ፕሬዝዳንሻል ስዊት',
+      en: 'Presidential Suite',
       price: 5000,
       capacity: 4,
-      bedsAm: 'Master King Bed + Separate Living Room',
-      bedsEn: 'Master King Bed + Separate Living Room',
-      amenitiesAm: 'VIP Service፣ Private Balcony፣ Free Breakfast',
-      amenitiesEn: 'VIP Service, Private Balcony, Free Breakfast',
-      image: '/r4.jpg'
+      bedsAm: 'Master King Bed + Living Room',
+      bedsEn: 'Master King Bed + Living Room',
+      image: '/r4.jpg',
+      featuresAm: 'VIP Service • Private Balcony • Free Breakfast',
+      featuresEn: 'VIP Service • Private Balcony • Free Breakfast'
     }
   };
 
   // =========================
-  // FORM STATE
+  // FORM
   // =========================
 
   const [formData, setFormData] = useState({
@@ -74,25 +73,33 @@ const Booking = ({ lang }) => {
     checkOut: '',
     adults: 1,
     children: 0,
-    childAges: [],
     rooms: 1,
     specialRequest: ''
   });
 
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [message, setMessage] = useState({
+    type: '',
+    text: ''
+  });
 
-  const selectedRoom = roomDetails[formData.room];
+  const selectedRoom = rooms[formData.room];
 
   // =========================
-  // TODAY'S DATE
+  // TODAY
   // =========================
 
   const today = new Date().toISOString().split('T')[0];
 
   // =========================
-  // HANDLE INPUT
+  // FORMAT PRICE
+  // =========================
+
+  const formatPrice = (price) =>
+    new Intl.NumberFormat('en-US').format(price);
+
+  // =========================
+  // INPUT CHANGE
   // =========================
 
   const handleChange = (e) => {
@@ -103,66 +110,83 @@ const Booking = ({ lang }) => {
       [name]: value
     }));
 
-    setErrorMessage('');
-    setSuccess(false);
-  };
-
-  // =========================
-  // CHILDREN CHANGE
-  // =========================
-
-  const handleChildrenChange = (e) => {
-    const count = Math.max(0, Math.min(6, Number(e.target.value)));
-
-    setFormData((prev) => ({
-      ...prev,
-      children: count,
-      childAges: Array.from(
-        { length: count },
-        (_, index) => prev.childAges[index] || ''
-      )
-    }));
-
-    setErrorMessage('');
-  };
-
-  // =========================
-  // CHILD AGE CHANGE
-  // =========================
-
-  const handleChildAgeChange = (index, value) => {
-    setFormData((prev) => {
-      const updatedAges = [...prev.childAges];
-      updatedAges[index] = value;
-
-      return {
-        ...prev,
-        childAges: updatedAges
-      };
+    setMessage({
+      type: '',
+      text: ''
     });
   };
 
   // =========================
-  // CHECK NIGHTS
+  // GUEST COUNTER
+  // =========================
+
+  const changeGuests = (type, amount) => {
+    setFormData((prev) => {
+      const current = Number(prev[type]);
+
+      let minimum = 0;
+
+      if (type === 'adults') {
+        minimum = 1;
+      }
+
+      const newValue = Math.max(
+        minimum,
+        Math.min(20, current + amount)
+      );
+
+      return {
+        ...prev,
+        [type]: newValue
+      };
+    });
+
+    setMessage({
+      type: '',
+      text: ''
+    });
+  };
+
+  // =========================
+  // ROOM COUNTER
+  // =========================
+
+  const changeRooms = (amount) => {
+    setFormData((prev) => ({
+      ...prev,
+      rooms: Math.max(
+        1,
+        Math.min(10, Number(prev.rooms) + amount)
+      )
+    }));
+
+    setMessage({
+      type: '',
+      text: ''
+    });
+  };
+
+  // =========================
+  // NIGHTS
   // =========================
 
   const nights = useMemo(() => {
-
     if (!formData.checkIn || !formData.checkOut) {
       return 0;
     }
 
-    const checkInDate = new Date(formData.checkIn);
-    const checkOutDate = new Date(formData.checkOut);
+    const start = new Date(formData.checkIn);
+    const end = new Date(formData.checkOut);
 
     const difference =
-      checkOutDate.getTime() - checkInDate.getTime();
+      end.getTime() - start.getTime();
 
-    const calculatedNights =
-      Math.ceil(difference / (1000 * 60 * 60 * 24));
+    const result =
+      Math.ceil(
+        difference / (1000 * 60 * 60 * 24)
+      );
 
-    return calculatedNights > 0 ? calculatedNights : 0;
-
+    return result > 0 ? result : 0;
   }, [formData.checkIn, formData.checkOut]);
 
   // =========================
@@ -170,17 +194,19 @@ const Booking = ({ lang }) => {
   // =========================
 
   const totalGuests =
-    Number(formData.adults) + Number(formData.children);
+    Number(formData.adults) +
+    Number(formData.children);
 
   // =========================
-  // TOTAL CAPACITY
+  // TOTAL ROOM CAPACITY
   // =========================
 
   const totalCapacity =
-    selectedRoom.capacity * Number(formData.rooms);
+    selectedRoom.capacity *
+    Number(formData.rooms);
 
   // =========================
-  // TOTAL PRICE
+  // PRICE
   // =========================
 
   const totalPrice =
@@ -189,68 +215,17 @@ const Booking = ({ lang }) => {
     nights;
 
   // =========================
-  // FORMAT PRICE
+  // CAPACITY CHECK
   // =========================
 
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('en-US').format(price);
-  };
+  const capacityExceeded =
+    totalGuests > totalCapacity;
 
   // =========================
-  // ROOM CHANGE
+  // VALIDATION
   // =========================
 
-  const handleRoomChange = (e) => {
-
-    setFormData((prev) => ({
-      ...prev,
-      room: e.target.value
-    }));
-
-    setErrorMessage('');
-    setSuccess(false);
-  };
-
-  // =========================
-  // RESET FORM
-  // =========================
-
-  const resetForm = () => {
-
-    setFormData({
-      name: '',
-      phone: '',
-      email: '',
-      room: 'Standard Room',
-      checkIn: '',
-      checkOut: '',
-      adults: 1,
-      children: 0,
-      childAges: [],
-      rooms: 1,
-      specialRequest: ''
-    });
-
-  };
-
-  // =========================
-  // BOOKING ID
-  // =========================
-
-  const generateBookingId = () => {
-
-    const randomNumber =
-      Math.floor(100000 + Math.random() * 900000);
-
-    return `ZADDIS-${randomNumber}`;
-  };
-
-  // =========================
-  // FORM VALIDATION
-  // =========================
-
-  const validateForm = () => {
-
+  const validate = () => {
     if (!formData.name.trim()) {
       return isAm
         ? 'እባክዎ ሙሉ ስምዎን ያስገቡ።'
@@ -263,61 +238,34 @@ const Booking = ({ lang }) => {
         : 'Please enter your phone number.';
     }
 
-    if (formData.phone.trim().length < 7) {
-      return isAm
-        ? 'እባክዎ ትክክለኛ ስልክ ቁጥር ያስገቡ።'
-        : 'Please enter a valid phone number.';
-    }
-
     if (!formData.email.trim()) {
       return isAm
         ? 'እባክዎ Email ያስገቡ።'
         : 'Please enter your email address.';
     }
 
-    if (!formData.checkIn || !formData.checkOut) {
+    if (!formData.checkIn) {
       return isAm
-        ? 'እባክዎ Check-in እና Check-out ቀን ይምረጡ።'
-        : 'Please select check-in and check-out dates.';
+        ? 'እባክዎ Check-in ቀን ይምረጡ።'
+        : 'Please select your check-in date.';
+    }
+
+    if (!formData.checkOut) {
+      return isAm
+        ? 'እባክዎ Check-out ቀን ይምረጡ።'
+        : 'Please select your check-out date.';
     }
 
     if (formData.checkOut <= formData.checkIn) {
       return isAm
-        ? 'Check-out ቀን ከ Check-in ቀን በኋላ መሆን አለበት።'
+        ? 'Check-out ቀን ከ Check-in በኋላ መሆን አለበት።'
         : 'Check-out must be after check-in.';
     }
 
-    if (Number(formData.adults) < 1) {
+    if (capacityExceeded) {
       return isAm
-        ? 'ቢያንስ 1 Adult መሆን አለበት።'
-        : 'At least 1 adult is required.';
-    }
-
-    if (totalGuests > totalCapacity) {
-      return isAm
-        ? `${selectedRoom.nameAm} በአንድ ክፍል ${selectedRoom.capacity} ሰው ብቻ ይቀበላል። ተጨማሪ ክፍል ይምረጡ።`
-        : `${selectedRoom.nameEn} accommodates ${selectedRoom.capacity} guests per room. Please select more rooms.`;
-    }
-
-    if (Number(formData.children) > 0) {
-
-      for (let i = 0; i < formData.childAges.length; i++) {
-
-        const age = formData.childAges[i];
-
-        if (age === '') {
-          return isAm
-            ? `የልጅ ${i + 1} እድሜ ያስገቡ።`
-            : `Please enter the age of child ${i + 1}.`;
-        }
-
-        if (Number(age) < 0 || Number(age) > 17) {
-          return isAm
-            ? 'የልጅ እድሜ ከ 0 እስከ 17 መሆን አለበት።'
-            : 'Child age must be between 0 and 17.';
-        }
-      }
-
+        ? `የመረጡት ${selectedRoom.am} ${formData.rooms} ክፍል ለ ${totalGuests} ሰዎች አይበቃም። እባክዎ የክፍል ብዛት ይጨምሩ።`
+        : `Your selected ${selectedRoom.en} does not have enough capacity for ${totalGuests} guests. Please increase the number of rooms.`;
     }
 
     if (nights <= 0) {
@@ -330,77 +278,98 @@ const Booking = ({ lang }) => {
   };
 
   // =========================
-  // SUBMIT BOOKING
+  // SUBMIT
   // =========================
 
   const handleSubmit = async (e) => {
-
     e.preventDefault();
 
     setLoading(true);
-    setSuccess(false);
-    setErrorMessage('');
 
-    const validationError = validateForm();
+    const error = validate();
 
-    if (validationError) {
-      setErrorMessage(validationError);
+    if (error) {
+      setMessage({
+        type: 'error',
+        text: error
+      });
+
       setLoading(false);
       return;
     }
 
     try {
+      const bookingId =
+        `ZADDIS-${Date.now().toString().slice(-8)}`;
 
-      const bookingId = generateBookingId();
+      await addDoc(
+        collection(db, 'bookings'),
+        {
+          bookingId,
 
-      await addDoc(collection(db, 'bookings'), {
+          guest: {
+            name: formData.name.trim(),
+            phone: formData.phone.trim(),
+            email: formData.email.trim()
+          },
 
-        bookingId,
+          room: {
+            type: formData.room,
+            roomNameAm: selectedRoom.am,
+            roomNameEn: selectedRoom.en,
+            pricePerNight: selectedRoom.price,
+            capacityPerRoom: selectedRoom.capacity
+          },
 
-        guest: {
-          name: formData.name.trim(),
-          phone: formData.phone.trim(),
-          email: formData.email.trim()
-        },
+          stay: {
+            checkIn: formData.checkIn,
+            checkOut: formData.checkOut,
+            nights,
+            rooms: Number(formData.rooms)
+          },
 
-        room: {
-          type: formData.room,
-          pricePerNight: selectedRoom.price,
-          capacity: selectedRoom.capacity
-        },
+          guests: {
+            adults: Number(formData.adults),
+            children: Number(formData.children),
+            totalGuests
+          },
 
-        stay: {
-          checkIn: formData.checkIn,
-          checkOut: formData.checkOut,
-          nights,
-          rooms: Number(formData.rooms)
-        },
+          pricing: {
+            pricePerNight: selectedRoom.price,
+            rooms: Number(formData.rooms),
+            nights,
+            totalPrice
+          },
 
-        guests: {
-          adults: Number(formData.adults),
-          children: Number(formData.children),
-          childAges: formData.childAges.map(Number)
-        },
+          specialRequest:
+            formData.specialRequest.trim(),
 
-        specialRequest:
-          formData.specialRequest.trim(),
+          status: 'Pending',
 
-        pricing: {
-          pricePerNight: selectedRoom.price,
-          rooms: Number(formData.rooms),
-          nights,
-          totalPrice
-        },
+          createdAt:
+            new Date().toISOString()
+        }
+      );
 
-        status: 'Pending',
-
-        createdAt: new Date().toISOString()
-
+      setMessage({
+        type: 'success',
+        text: isAm
+          ? `ማዘዣዎ በተሳካ ሁኔታ ተልኳል። Booking ID: ${bookingId}`
+          : `Your booking has been submitted successfully. Booking ID: ${bookingId}`
       });
 
-      setSuccess(true);
-
-      resetForm();
+      setFormData({
+        name: '',
+        phone: '',
+        email: '',
+        room: 'Standard Room',
+        checkIn: '',
+        checkOut: '',
+        adults: 1,
+        children: 0,
+        rooms: 1,
+        specialRequest: ''
+      });
 
       window.scrollTo({
         top: 0,
@@ -408,76 +377,51 @@ const Booking = ({ lang }) => {
       });
 
     } catch (error) {
+      console.error(error);
 
-      console.error('Booking error:', error);
-
-      setErrorMessage(
-        isAm
+      setMessage({
+        type: 'error',
+        text: isAm
           ? 'ማዘዣውን መላክ አልተቻለም። እባክዎ እንደገና ይሞክሩ።'
-          : 'Unable to submit your booking. Please try again.'
-      );
+          : 'Something went wrong. Please try again.'
+      });
 
     } finally {
-
       setLoading(false);
-
     }
-
   };
 
-  // =========================
-  // PREVENT INVALID CHECKOUT
-  // =========================
-
-  useEffect(() => {
-
-    if (
-      formData.checkIn &&
-      formData.checkOut &&
-      formData.checkOut <= formData.checkIn
-    ) {
-
-      setFormData((prev) => ({
-        ...prev,
-        checkOut: ''
-      }));
-
-    }
-
-  }, [formData.checkIn]);
-
   return (
-
     <div
       style={{
+        minHeight: '100vh',
+        background: '#f6f7f9',
         fontFamily:
           "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-        backgroundColor: '#f7f8fa',
-        minHeight: '100vh',
         color: '#172033'
       }}
     >
 
-      {/* =====================================
-          HERO HEADER
-      ====================================== */}
+      {/* =================================
+          HERO
+      ================================= */}
 
       <section
         style={{
           backgroundImage:
-            'linear-gradient(rgba(8,15,30,0.78), rgba(8,15,30,0.78)), url("/g1.jpg")',
+            'linear-gradient(rgba(10,18,35,0.72), rgba(10,18,35,0.88)), url("/g1.jpg")',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          padding: '90px 20px',
-          textAlign: 'center',
-          color: '#fff'
+          padding: '85px 20px',
+          color: '#fff',
+          textAlign: 'center'
         }}
       >
 
         <div
           style={{
-            maxWidth: '850px',
-            margin: '0 auto'
+            maxWidth: '800px',
+            margin: 'auto'
           }}
         >
 
@@ -485,39 +429,42 @@ const Booking = ({ lang }) => {
             style={{
               display: 'inline-block',
               padding: '8px 18px',
-              borderRadius: '30px',
-              backgroundColor: 'rgba(230,126,34,0.18)',
-              border: '1px solid rgba(255,255,255,0.3)',
-              marginBottom: '20px'
+              borderRadius: '50px',
+              background: 'rgba(243,156,18,0.15)',
+              border:
+                '1px solid rgba(255,255,255,0.25)',
+              marginBottom: '18px',
+              fontSize: '0.9rem'
             }}
           >
-            🛎️ Z ADDIS HOTEL
+            ✦ Z ADDIS HOTEL
           </div>
 
           <h1
             style={{
-              fontSize: 'clamp(2.3rem, 6vw, 4rem)',
-              margin: '0 0 18px',
-              lineHeight: '1.15'
+              fontSize:
+                'clamp(2.3rem, 6vw, 4rem)',
+              margin: '0 0 15px',
+              lineHeight: 1.15
             }}
           >
             {isAm
-              ? 'ቆይታዎን አሁኑኑ ያስይዙ'
+              ? 'ቆይታዎን ያስይዙ'
               : 'Book Your Stay'}
           </h1>
 
           <p
             style={{
               maxWidth: '650px',
-              margin: '0 auto',
-              lineHeight: '1.8',
+              margin: 'auto',
               color: '#e5e7eb',
-              fontSize: '1.05rem'
+              fontSize: '1.05rem',
+              lineHeight: 1.7
             }}
           >
             {isAm
-              ? 'ምቹ ክፍልዎን ይምረጡ፣ የቆይታ ቀንዎን ያስገቡ እና በቀላሉ ቦታዎን ያስይዙ።'
-              : 'Choose your room, select your dates and reserve your stay in just a few simple steps.'}
+              ? 'የሚመችዎትን ክፍል ይምረጡ እና ቆይታዎን በቀላሉ ያስይዙ።'
+              : 'Choose your room and reserve your stay with ease.'}
           </p>
 
         </div>
@@ -525,418 +472,262 @@ const Booking = ({ lang }) => {
       </section>
 
 
-      {/* =====================================
-          SUCCESS MESSAGE
-      ====================================== */}
+      {/* =================================
+          MESSAGE
+      ================================= */}
 
-      {success && (
-
+      {message.text && (
         <div
           style={{
-            maxWidth: '1000px',
-            margin: '30px auto 0',
-            padding: '0 20px',
-            boxSizing: 'border-box'
+            maxWidth: '1100px',
+            margin: '25px auto 0',
+            padding: '0 20px'
           }}
         >
 
           <div
             style={{
-              backgroundColor: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              color: '#065f46',
-              padding: '20px',
-              borderRadius: '15px',
-              textAlign: 'center'
+              padding: '17px 20px',
+              borderRadius: '14px',
+              background:
+                message.type === 'success'
+                  ? '#ecfdf5'
+                  : '#fef2f2',
+              border:
+                message.type === 'success'
+                  ? '1px solid #a7f3d0'
+                  : '1px solid #fecaca',
+              color:
+                message.type === 'success'
+                  ? '#047857'
+                  : '#b91c1c',
+              lineHeight: 1.6
             }}
           >
-
-            <div
-              style={{
-                fontSize: '2rem',
-                marginBottom: '8px'
-              }}
-            >
-              ✅
-            </div>
-
-            <strong
-              style={{
-                fontSize: '1.15rem'
-              }}
-            >
-              {isAm
-                ? 'ማዘዣዎ በተሳካ ሁኔታ ተልኳል!'
-                : 'Your booking has been submitted successfully!'}
-            </strong>
-
-            <p
-              style={{
-                margin: '8px 0 0'
-              }}
-            >
-              {isAm
-                ? 'ሆቴሉ ማዘዣዎን ካረጋገጠ በኋላ ያሳውቅዎታል።'
-                : 'The hotel will contact you after reviewing your booking.'}
-            </p>
-
+            {message.type === 'success'
+              ? '✓ '
+              : '⚠️ '}
+            {message.text}
           </div>
 
         </div>
-
       )}
 
 
-      {/* =====================================
-          MAIN BOOKING AREA
-      ====================================== */}
+      {/* =================================
+          MAIN
+      ================================= */}
 
-      <section
+      <main
         style={{
           maxWidth: '1150px',
-          margin: '0 auto',
-          padding: '60px 20px 100px'
+          margin: 'auto',
+          padding: '55px 20px 90px'
         }}
       >
 
         <div
+          className="booking-grid"
           style={{
             display: 'grid',
             gridTemplateColumns:
-              'minmax(0, 1.35fr) minmax(320px, 0.65fr)',
+              'minmax(0, 1.4fr) minmax(300px, 0.6fr)',
             gap: '30px',
             alignItems: 'start'
           }}
         >
 
           {/* =================================
-              LEFT SIDE FORM
+              FORM
           ================================= */}
 
           <form
             onSubmit={handleSubmit}
             style={{
-              backgroundColor: '#fff',
-              padding: 'clamp(22px, 4vw, 40px)',
+              background: '#fff',
               borderRadius: '22px',
-              boxShadow: '0 15px 45px rgba(0,0,0,0.08)'
+              padding:
+                'clamp(22px, 4vw, 40px)',
+              boxShadow:
+                '0 15px 45px rgba(0,0,0,0.07)'
             }}
           >
 
-            {/* SECTION TITLE */}
+            {/* GUEST INFORMATION */}
 
-            <div
-              style={{
-                marginBottom: '30px'
-              }}
-            >
-
-              <span
-                style={{
-                  color: '#e67e22',
-                  fontWeight: '700',
-                  letterSpacing: '1px'
-                }}
-              >
-                {isAm ? 'የእንግዳ መረጃ' : 'GUEST INFORMATION'}
-              </span>
-
-              <h2
-                style={{
-                  margin: '8px 0 0',
-                  fontSize: '1.9rem',
-                  color: '#172033'
-                }}
-              >
-                {isAm
-                  ? 'የእርስዎን መረጃ ያስገቡ'
-                  : 'Tell Us About Yourself'}
-              </h2>
-
-            </div>
-
-
-            {/* NAME */}
-
-            <label style={labelStyle}>
-              {isAm ? 'ሙሉ ስም' : 'Full Name'}
-            </label>
-
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder={
-                isAm
-                  ? 'ሙሉ ስምዎን ያስገቡ'
-                  : 'Enter your full name'
-              }
-              required
-              style={inputStyle}
+            <SectionTitle
+              small={isAm
+                ? 'የእንግዳ መረጃ'
+                : 'GUEST INFORMATION'}
+              title={isAm
+                ? 'የእርስዎን መረጃ ያስገቡ'
+                : 'Guest Information'}
             />
 
-
-            {/* PHONE + EMAIL */}
-
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '18px',
-                marginTop: '20px'
+                gap: '18px'
               }}
             >
 
-              <div>
-
-                <label style={labelStyle}>
-                  {isAm ? 'ስልክ ቁጥር' : 'Phone Number'}
-                </label>
-
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  placeholder="09XXXXXXXX"
-                  required
-                  style={inputStyle}
-                />
-
-              </div>
-
-
-              <div>
-
-                <label style={labelStyle}>
-                  {isAm ? 'Email' : 'Email Address'}
-                </label>
-
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="example@email.com"
-                  required
-                  style={inputStyle}
-                />
-
-              </div>
-
-            </div>
-
-
-            {/* ROOM SECTION */}
-
-            <div
-              style={{
-                marginTop: '40px',
-                marginBottom: '25px'
-              }}
-            >
-
-              <span
-                style={{
-                  color: '#e67e22',
-                  fontWeight: '700',
-                  letterSpacing: '1px'
-                }}
-              >
-                {isAm ? 'የክፍል ምርጫ' : 'ROOM SELECTION'}
-              </span>
-
-              <h2
-                style={{
-                  margin: '8px 0 0',
-                  fontSize: '1.9rem'
-                }}
-              >
-                {isAm
-                  ? 'የሚመችዎትን ክፍል ይምረጡ'
-                  : 'Choose Your Room'}
-              </h2>
-
-            </div>
-
-
-            {/* ROOM CARDS */}
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit, minmax(190px, 1fr))',
-                gap: '15px'
-              }}
-            >
-
-              {Object.entries(roomDetails).map(
-                ([roomKey, room]) => {
-
-                  const selected =
-                    formData.room === roomKey;
-
-                  return (
-
-                    <button
-                      type="button"
-                      key={roomKey}
-                      onClick={() =>
-                        handleRoomChange({
-                          target: {
-                            value: roomKey
-                          }
-                        })
-                      }
-                      style={{
-                        padding: 0,
-                        border: selected
-                          ? '3px solid #e67e22'
-                          : '1px solid #e5e7eb',
-                        borderRadius: '15px',
-                        overflow: 'hidden',
-                        backgroundColor: '#fff',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        boxShadow: selected
-                          ? '0 8px 25px rgba(230,126,34,0.18)'
-                          : 'none'
-                      }}
-                    >
-
-                      <img
-                        src={room.image}
-                        alt={room.nameEn}
-                        style={{
-                          width: '100%',
-                          height: '135px',
-                          objectFit: 'cover',
-                          display: 'block'
-                        }}
-                      />
-
-                      <div
-                        style={{
-                          padding: '15px'
-                        }}
-                      >
-
-                        <strong
-                          style={{
-                            display: 'block',
-                            color: '#172033',
-                            marginBottom: '7px'
-                          }}
-                        >
-                          {isAm
-                            ? room.nameAm
-                            : room.nameEn}
-                        </strong>
-
-                        <span
-                          style={{
-                            color: '#e67e22',
-                            fontWeight: '800'
-                          }}
-                        >
-                          {formatPrice(room.price)} ETB
-                          <small
-                            style={{
-                              color: '#777',
-                              fontWeight: '400'
-                            }}
-                          >
-                            {' '}
-                            / night
-                          </small>
-                        </span>
-
-                      </div>
-
-                    </button>
-
-                  );
-
-                }
-              )}
-
-            </div>
-
-
-            {/* SELECTED ROOM INFO */}
-
-            <div
-              style={{
-                marginTop: '20px',
-                padding: '20px',
-                borderRadius: '15px',
-                backgroundColor: '#fff7ed',
-                border: '1px solid #fed7aa'
-              }}
-            >
+              <Input
+                label={isAm
+                  ? 'ሙሉ ስም'
+                  : 'Full Name'}
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder={isAm
+                  ? 'ሙሉ ስምዎን ያስገቡ'
+                  : 'Enter your full name'}
+              />
 
               <div
                 style={{
-                  display: 'flex',
-                  gap: '15px',
-                  alignItems: 'center',
-                  flexWrap: 'wrap'
+                  display: 'grid',
+                  gridTemplateColumns:
+                    'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '18px'
                 }}
               >
 
-                <img
-                  src={selectedRoom.image}
-                  alt={selectedRoom.nameEn}
-                  style={{
-                    width: '100px',
-                    height: '75px',
-                    objectFit: 'cover',
-                    borderRadius: '10px'
-                  }}
+                <Input
+                  label={isAm
+                    ? 'ስልክ ቁጥር'
+                    : 'Phone Number'}
+                  name="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder="09XXXXXXXX"
                 />
 
-                <div>
+                <Input
+                  label="Email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="example@email.com"
+                />
 
-                  <h3
-                    style={{
-                      margin: '0 0 6px'
-                    }}
-                  >
-                    {isAm
-                      ? selectedRoom.nameAm
-                      : selectedRoom.nameEn}
-                  </h3>
+              </div>
 
-                  <p
-                    style={{
-                      margin: '4px 0',
-                      color: '#666',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    🛏️{' '}
-                    {isAm
-                      ? selectedRoom.bedsAm
-                      : selectedRoom.bedsEn}
-                  </p>
+            </div>
 
-                  <p
-                    style={{
-                      margin: '4px 0',
-                      color: '#666',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    ✨{' '}
-                    {isAm
-                      ? selectedRoom.amenitiesAm
-                      : selectedRoom.amenitiesEn}
-                  </p>
 
-                </div>
+            {/* ROOM */}
+
+            <div
+              style={{
+                marginTop: '45px'
+              }}
+            >
+
+              <SectionTitle
+                small={isAm
+                  ? 'የክፍል ምርጫ'
+                  : 'ROOM SELECTION'}
+                title={isAm
+                  ? 'ክፍልዎን ይምረጡ'
+                  : 'Choose Your Room'}
+              />
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns:
+                    'repeat(auto-fit, minmax(190px, 1fr))',
+                  gap: '15px'
+                }}
+              >
+
+                {Object.entries(rooms).map(
+                  ([key, room]) => {
+
+                    const active =
+                      formData.room === key;
+
+                    return (
+                      <button
+                        type="button"
+                        key={key}
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            room: key
+                          }))
+                        }
+                        style={{
+                          padding: 0,
+                          overflow: 'hidden',
+                          borderRadius: '15px',
+                          background: '#fff',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          border: active
+                            ? '3px solid #e67e22'
+                            : '1px solid #e5e7eb',
+                          boxShadow: active
+                            ? '0 8px 25px rgba(230,126,34,0.18)'
+                            : 'none'
+                        }}
+                      >
+
+                        <img
+                          src={room.image}
+                          alt={room.en}
+                          style={{
+                            width: '100%',
+                            height: '140px',
+                            objectFit: 'cover',
+                            display: 'block'
+                          }}
+                        />
+
+                        <div
+                          style={{
+                            padding: '14px'
+                          }}
+                        >
+
+                          <strong
+                            style={{
+                              display: 'block',
+                              marginBottom: '6px'
+                            }}
+                          >
+                            {isAm
+                              ? room.am
+                              : room.en}
+                          </strong>
+
+                          <span
+                            style={{
+                              color: '#e67e22',
+                              fontWeight: '800'
+                            }}
+                          >
+                            {formatPrice(room.price)}
+                            {' '}ETB
+                          </span>
+
+                          <span
+                            style={{
+                              color: '#777',
+                              fontSize: '0.8rem'
+                            }}
+                          >
+                            {' '} / night
+                          </span>
+
+                        </div>
+
+                      </button>
+                    );
+                  }
+                )}
 
               </div>
 
@@ -947,352 +738,190 @@ const Booking = ({ lang }) => {
 
             <div
               style={{
-                marginTop: '40px',
-                marginBottom: '25px'
+                marginTop: '45px'
               }}
             >
 
-              <span
-                style={{
-                  color: '#e67e22',
-                  fontWeight: '700'
-                }}
-              >
-                {isAm ? 'የቆይታ ጊዜ' : 'STAY DETAILS'}
-              </span>
-
-              <h2
-                style={{
-                  margin: '8px 0 0',
-                  fontSize: '1.9rem'
-                }}
-              >
-                {isAm
-                  ? 'መቼ ይመጣሉ?'
-                  : 'When Are You Staying?'}
-              </h2>
-
-            </div>
-
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '18px'
-              }}
-            >
-
-              <div>
-
-                <label style={labelStyle}>
-                  {isAm ? 'የመግቢያ ቀን' : 'Check-In'}
-                </label>
-
-                <input
-                  type="date"
-                  name="checkIn"
-                  min={today}
-                  value={formData.checkIn}
-                  onChange={handleChange}
-                  required
-                  style={inputStyle}
-                />
-
-              </div>
-
-
-              <div>
-
-                <label style={labelStyle}>
-                  {isAm ? 'የመውጫ ቀን' : 'Check-Out'}
-                </label>
-
-                <input
-                  type="date"
-                  name="checkOut"
-                  min={formData.checkIn || today}
-                  value={formData.checkOut}
-                  onChange={handleChange}
-                  required
-                  style={inputStyle}
-                />
-
-              </div>
-
-            </div>
-
-
-            {/* NIGHTS */}
-
-            {nights > 0 && (
+              <SectionTitle
+                small={isAm
+                  ? 'የቆይታ ጊዜ'
+                  : 'STAY DETAILS'}
+                title={isAm
+                  ? 'የሚመጡበትን ቀን ይምረጡ'
+                  : 'Select Your Dates'}
+              />
 
               <div
                 style={{
-                  marginTop: '15px',
-                  padding: '12px 16px',
-                  backgroundColor: '#f3f4f6',
-                  borderRadius: '10px',
-                  color: '#4b5563'
+                  display: 'grid',
+                  gridTemplateColumns:
+                    'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '18px'
                 }}
               >
-                🌙{' '}
-                <strong>
-                  {nights}{' '}
+
+                <Input
+                  label={isAm
+                    ? 'የመግቢያ ቀን'
+                    : 'Check-In'}
+                  name="checkIn"
+                  type="date"
+                  min={today}
+                  value={formData.checkIn}
+                  onChange={handleChange}
+                />
+
+                <Input
+                  label={isAm
+                    ? 'የመውጫ ቀን'
+                    : 'Check-Out'}
+                  name="checkOut"
+                  type="date"
+                  min={
+                    formData.checkIn || today
+                  }
+                  value={formData.checkOut}
+                  onChange={handleChange}
+                />
+
+              </div>
+
+              {nights > 0 && (
+                <div
+                  style={{
+                    marginTop: '14px',
+                    padding: '13px 16px',
+                    borderRadius: '11px',
+                    background: '#f8fafc',
+                    color: '#475569'
+                  }}
+                >
+                  🌙 <strong>{nights}</strong>{' '}
                   {isAm
-                    ? 'ሌሊት ቆይታ'
+                    ? 'ሌሊት'
                     : nights === 1
                     ? 'night'
                     : 'nights'}
-                </strong>
-              </div>
+                </div>
+              )}
 
-            )}
+            </div>
 
 
             {/* GUESTS */}
 
             <div
               style={{
-                marginTop: '40px',
-                marginBottom: '25px'
+                marginTop: '45px'
               }}
             >
 
-              <span
-                style={{
-                  color: '#e67e22',
-                  fontWeight: '700'
-                }}
-              >
-                {isAm ? 'እንግዶች' : 'GUESTS'}
-              </span>
-
-              <h2
-                style={{
-                  margin: '8px 0 0',
-                  fontSize: '1.9rem'
-                }}
-              >
-                {isAm
+              <SectionTitle
+                small={isAm
+                  ? 'እንግዶች'
+                  : 'GUESTS'}
+                title={isAm
                   ? 'ስንት ሰዎች ይመጣሉ?'
-                  : 'Who Is Staying?'}
-              </h2>
-
-            </div>
-
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit, minmax(150px, 1fr))',
-                gap: '15px'
-              }}
-            >
-
-              <div>
-
-                <label style={labelStyle}>
-                  👤 {isAm ? 'Adults' : 'Adults'}
-                </label>
-
-                <select
-                  name="adults"
-                  value={formData.adults}
-                  onChange={handleChange}
-                  style={inputStyle}
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map(
-                    (number) => (
-                      <option
-                        key={number}
-                        value={number}
-                      >
-                        {number}
-                      </option>
-                    )
-                  )}
-                </select>
-
-                <small
-                  style={{
-                    color: '#777'
-                  }}
-                >
-                  {isAm ? '18+ ዓመት' : 'Age 18+'}
-                </small>
-
-              </div>
-
-
-              <div>
-
-                <label style={labelStyle}>
-                  🧒 {isAm ? 'Children' : 'Children'}
-                </label>
-
-                <select
-                  name="children"
-                  value={formData.children}
-                  onChange={handleChildrenChange}
-                  style={inputStyle}
-                >
-                  {[0, 1, 2, 3, 4, 5, 6].map(
-                    (number) => (
-                      <option
-                        key={number}
-                        value={number}
-                      >
-                        {number}
-                      </option>
-                    )
-                  )}
-                </select>
-
-                <small
-                  style={{
-                    color: '#777'
-                  }}
-                >
-                  {isAm ? '0-17 ዓመት' : 'Age 0-17'}
-                </small>
-
-              </div>
-
-
-              <div>
-
-                <label style={labelStyle}>
-                  🏨 {isAm ? 'Rooms' : 'Rooms'}
-                </label>
-
-                <select
-                  name="rooms"
-                  value={formData.rooms}
-                  onChange={handleChange}
-                  style={inputStyle}
-                >
-                  {[1, 2, 3, 4, 5].map(
-                    (number) => (
-                      <option
-                        key={number}
-                        value={number}
-                      >
-                        {number}
-                      </option>
-                    )
-                  )}
-                </select>
-
-                <small
-                  style={{
-                    color: '#777'
-                  }}
-                >
-                  {isAm
-                    ? 'የክፍል ብዛት'
-                    : 'Number of rooms'}
-                </small>
-
-              </div>
-
-            </div>
-
-
-            {/* CHILD AGES */}
-
-            {Number(formData.children) > 0 && (
+                  : 'How Many Guests?'}
+              />
 
               <div
                 style={{
-                  marginTop: '20px',
-                  padding: '20px',
-                  backgroundColor: '#f9fafb',
-                  borderRadius: '15px',
-                  border: '1px solid #e5e7eb'
+                  display: 'grid',
+                  gridTemplateColumns:
+                    'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '15px'
                 }}
               >
 
-                <h4
-                  style={{
-                    marginTop: 0,
-                    marginBottom: '15px'
-                  }}
-                >
-                  🧒{' '}
-                  {isAm
-                    ? 'የልጆች እድሜ'
-                    : 'Children Ages'}
-                </h4>
+                <Counter
+                  icon="👤"
+                  title="Adults"
+                  subtitle={isAm
+                    ? 'አዋቂዎች'
+                    : 'Age 18+'}
+                  value={formData.adults}
+                  onMinus={() =>
+                    changeGuests('adults', -1)
+                  }
+                  onPlus={() =>
+                    changeGuests('adults', 1)
+                  }
+                />
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns:
-                      'repeat(auto-fit, minmax(120px, 1fr))',
-                    gap: '15px'
-                  }}
-                >
+                <Counter
+                  icon="🧒"
+                  title="Children"
+                  subtitle={isAm
+                    ? 'ልጆች'
+                    : 'Under 18'}
+                  value={formData.children}
+                  onMinus={() =>
+                    changeGuests('children', -1)
+                  }
+                  onPlus={() =>
+                    changeGuests('children', 1)
+                  }
+                />
 
-                  {formData.childAges.map(
-                    (age, index) => (
-
-                      <div key={index}>
-
-                        <label style={labelStyle}>
-                          {isAm
-                            ? `ልጅ ${index + 1}`
-                            : `Child ${index + 1}`}
-                        </label>
-
-                        <select
-                          value={age}
-                          onChange={(e) =>
-                            handleChildAgeChange(
-                              index,
-                              e.target.value
-                            )
-                          }
-                          style={inputStyle}
-                        >
-
-                          <option value="">
-                            {isAm
-                              ? 'እድሜ'
-                              : 'Age'}
-                          </option>
-
-                          {Array.from(
-                            { length: 18 },
-                            (_, ageNumber) => (
-                              <option
-                                key={ageNumber}
-                                value={ageNumber}
-                              >
-                                {ageNumber}{' '}
-                                {isAm
-                                  ? 'ዓመት'
-                                  : ageNumber === 1
-                                  ? 'year'
-                                  : 'years'}
-                              </option>
-                            )
-                          )}
-
-                        </select>
-
-                      </div>
-
-                    )
-                  )}
-
-                </div>
+                <Counter
+                  icon="🏨"
+                  title="Rooms"
+                  subtitle={isAm
+                    ? 'የክፍል ብዛት'
+                    : 'Number of rooms'}
+                  value={formData.rooms}
+                  onMinus={() =>
+                    changeRooms(-1)
+                  }
+                  onPlus={() =>
+                    changeRooms(1)
+                  }
+                />
 
               </div>
 
-            )}
+            </div>
+
+
+            {/* CAPACITY WARNING */}
+
+            <div
+              style={{
+                marginTop: '18px',
+                padding: '15px',
+                borderRadius: '12px',
+                background: capacityExceeded
+                  ? '#fef2f2'
+                  : '#f0fdf4',
+                border: capacityExceeded
+                  ? '1px solid #fecaca'
+                  : '1px solid #bbf7d0',
+                color: capacityExceeded
+                  ? '#b91c1c'
+                  : '#166534'
+              }}
+            >
+
+              {capacityExceeded
+                ? '⚠️'
+                : '✓'}
+
+              {' '}
+
+              {capacityExceeded
+                ? (
+                  isAm
+                    ? `${formData.rooms} ${selectedRoom.am} ለ ${totalGuests} ሰዎች አይበቃም። እባክዎ Rooms ይጨምሩ።`
+                    : `${formData.rooms} ${selectedRoom.en} is not enough for ${totalGuests} guests. Please increase rooms.`
+                )
+                : (
+                  isAm
+                    ? `${formData.rooms} ክፍል ለ ${totalGuests} ሰዎች በቂ ነው።`
+                    : `${formData.rooms} room${formData.rooms > 1 ? 's' : ''} is enough for ${totalGuests} guests.`
+                )}
+
+            </div>
 
 
             {/* SPECIAL REQUEST */}
@@ -1303,99 +932,87 @@ const Booking = ({ lang }) => {
               }}
             >
 
-              <label style={labelStyle}>
+              <label
+                style={{
+                  display: 'block',
+                  fontWeight: '700',
+                  marginBottom: '8px'
+                }}
+              >
                 📝{' '}
                 {isAm
-                  ? 'ልዩ ጥያቄ (ካለ)'
-                  : 'Special Request (Optional)'}
+                  ? 'ልዩ ጥያቄ'
+                  : 'Special Request'}
+                <span
+                  style={{
+                    color: '#999',
+                    fontWeight: '400'
+                  }}
+                >
+                  {' '}
+                  ({isAm ? 'አማራጭ' : 'Optional'})
+                </span>
               </label>
 
               <textarea
                 name="specialRequest"
                 value={formData.specialRequest}
                 onChange={handleChange}
-                placeholder={
-                  isAm
-                    ? 'ለምሳሌ፦ Airport pickup እፈልጋለሁ...'
-                    : 'For example: I need airport pickup...'
-                }
-                rows="5"
+                rows="4"
+                placeholder={isAm
+                  ? 'ማንኛውም ልዩ ጥያቄ ካለዎት እዚህ ይጻፉ...'
+                  : 'Write any special request here...'}
                 style={{
                   ...inputStyle,
-                  resize: 'vertical',
-                  minHeight: '120px'
+                  resize: 'vertical'
                 }}
               />
 
             </div>
 
 
-            {/* ERROR */}
-
-            {errorMessage && (
-
-              <div
-                style={{
-                  marginTop: '25px',
-                  padding: '15px',
-                  borderRadius: '12px',
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  color: '#b91c1c',
-                  lineHeight: '1.5'
-                }}
-              >
-                ⚠️ {errorMessage}
-              </div>
-
-            )}
-
-
-            {/* SUBMIT BUTTON */}
+            {/* SUBMIT */}
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || capacityExceeded}
               style={{
                 width: '100%',
                 marginTop: '30px',
                 padding: '17px',
                 border: 'none',
                 borderRadius: '13px',
-                backgroundColor:
-                  loading
+                background:
+                  loading || capacityExceeded
                     ? '#9ca3af'
                     : '#e67e22',
                 color: '#fff',
                 fontWeight: '800',
-                fontSize: '1.08rem',
-                cursor: loading
-                  ? 'not-allowed'
-                  : 'pointer',
+                fontSize: '1.05rem',
+                cursor:
+                  loading || capacityExceeded
+                    ? 'not-allowed'
+                    : 'pointer',
                 boxShadow:
-                  loading
+                  loading || capacityExceeded
                     ? 'none'
                     : '0 10px 25px rgba(230,126,34,0.25)'
               }}
             >
+
               {loading
-                ? `⏳ ${
-                    isAm
-                      ? 'በመላክ ላይ...'
-                      : 'Submitting...'
-                  }`
-                : `🛎️ ${
-                    isAm
-                      ? 'ቦታ ያስይዙ'
-                      : 'Confirm Booking'
-                  }`}
+                ? '⏳ Submitting...'
+                : isAm
+                ? '🛎️ ቦታ አስይዝ'
+                : '🛎️ Confirm Booking'}
+
             </button>
 
           </form>
 
 
           {/* =================================
-              RIGHT SIDE SUMMARY
+              SUMMARY
           ================================= */}
 
           <aside
@@ -1407,273 +1024,163 @@ const Booking = ({ lang }) => {
 
             <div
               style={{
-                backgroundColor: '#fff',
+                background: '#fff',
                 borderRadius: '22px',
                 overflow: 'hidden',
-                boxShadow: '0 15px 45px rgba(0,0,0,0.08)'
+                boxShadow:
+                  '0 15px 45px rgba(0,0,0,0.08)'
               }}
             >
 
-              {/* ROOM IMAGE */}
-
               <img
                 src={selectedRoom.image}
-                alt={selectedRoom.nameEn}
+                alt={selectedRoom.en}
                 style={{
                   width: '100%',
-                  height: '230px',
+                  height: '240px',
                   objectFit: 'cover',
                   display: 'block'
                 }}
               />
 
+              <div
+                style={{
+                  padding: '25px'
+                }}
+              >
 
-              <div style={{ padding: '25px' }}>
-
-                <span
+                <small
                   style={{
                     color: '#e67e22',
-                    fontWeight: '700',
-                    fontSize: '0.85rem',
+                    fontWeight: '800',
                     letterSpacing: '1px'
                   }}
                 >
                   {isAm
                     ? 'የማዘዣ ማጠቃለያ'
-                    : 'BOOKING SUMMARY'}
-                </span>
+                    : 'YOUR RESERVATION'}
+                </small>
 
                 <h2
                   style={{
-                    margin: '8px 0 20px',
-                    fontSize: '1.7rem'
+                    margin: '8px 0 20px'
                   }}
                 >
                   {isAm
-                    ? selectedRoom.nameAm
-                    : selectedRoom.nameEn}
+                    ? selectedRoom.am
+                    : selectedRoom.en}
                 </h2>
 
+                <SummaryRow
+                  label={isAm
+                    ? 'የክፍል ዋጋ'
+                    : 'Room price'}
+                  value={`${formatPrice(
+                    selectedRoom.price
+                  )} ETB`}
+                />
 
-                {/* PRICE */}
+                <SummaryRow
+                  label={isAm
+                    ? 'ክፍሎች'
+                    : 'Rooms'}
+                  value={formData.rooms}
+                />
 
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: '12px 0',
-                    borderBottom: '1px solid #eee'
-                  }}
-                >
+                <SummaryRow
+                  label={isAm
+                    ? 'ሌሊቶች'
+                    : 'Nights'}
+                  value={nights}
+                />
 
-                  <span>
-                    {isAm
-                      ? 'ዋጋ / ሌሊት'
-                      : 'Price / night'}
-                  </span>
+                <SummaryRow
+                  label={isAm
+                    ? 'Adults'
+                    : 'Adults'}
+                  value={formData.adults}
+                />
 
-                  <strong>
-                    {formatPrice(selectedRoom.price)} ETB
-                  </strong>
-
-                </div>
-
-
-                {/* NIGHTS */}
-
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: '12px 0',
-                    borderBottom: '1px solid #eee'
-                  }}
-                >
-
-                  <span>
-                    {isAm
-                      ? 'የቆይታ ሌሊት'
-                      : 'Number of nights'}
-                  </span>
-
-                  <strong>
-                    {nights || 0}
-                  </strong>
-
-                </div>
-
-
-                {/* ROOMS */}
+                <SummaryRow
+                  label={isAm
+                    ? 'Children'
+                    : 'Children'}
+                  value={formData.children}
+                />
 
                 <div
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: '12px 0',
-                    borderBottom: '1px solid #eee'
-                  }}
-                >
-
-                  <span>
-                    {isAm
-                      ? 'ክፍሎች'
-                      : 'Rooms'}
-                  </span>
-
-                  <strong>
-                    {formData.rooms}
-                  </strong>
-
-                </div>
-
-
-                {/* GUESTS */}
-
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: '12px 0',
-                    borderBottom: '1px solid #eee'
-                  }}
-                >
-
-                  <span>
-                    {isAm
-                      ? 'እንግዶች'
-                      : 'Guests'}
-                  </span>
-
-                  <strong>
-                    {formData.adults}{' '}
-                    {isAm
-                      ? 'Adults'
-                      : 'Adults'}
-                    {Number(formData.children) > 0 &&
-                      ` + ${formData.children} ${
-                        isAm
-                          ? 'Children'
-                          : 'Children'
-                      }`}
-                  </strong>
-
-                </div>
-
-
-                {/* TOTAL */}
-
-                <div
-                  style={{
-                    marginTop: '20px',
+                    marginTop: '18px',
                     padding: '20px',
-                    borderRadius: '15px',
-                    backgroundColor: '#fff7ed'
+                    background: '#fff7ed',
+                    borderRadius: '15px'
                   }}
                 >
 
                   <div
                     style={{
                       display: 'flex',
-                      justifyContent: 'space-between',
+                      justifyContent:
+                        'space-between',
                       alignItems: 'center',
                       gap: '15px'
                     }}
                   >
 
-                    <span
-                      style={{
-                        fontWeight: '700'
-                      }}
-                    >
+                    <strong>
                       {isAm
-                        ? 'ጠቅላላ ዋጋ'
-                        : 'Total Price'}
-                    </span>
+                        ? 'ጠቅላላ'
+                        : 'Total'}
+                    </strong>
 
                     <strong
                       style={{
                         color: '#e67e22',
-                        fontSize: '1.45rem'
+                        fontSize: '1.4rem'
                       }}
                     >
-                      {formatPrice(totalPrice)} ETB
+                      {formatPrice(
+                        totalPrice
+                      )}{' '}
+                      ETB
                     </strong>
 
                   </div>
 
                 </div>
 
-
-                {/* CAPACITY */}
-
                 <div
                   style={{
-                    marginTop: '18px',
-                    padding: '14px',
-                    borderRadius: '12px',
-                    backgroundColor:
-                      totalGuests > totalCapacity
-                        ? '#fef2f2'
-                        : '#f0fdf4',
-                    color:
-                      totalGuests > totalCapacity
-                        ? '#b91c1c'
-                        : '#166534',
-                    fontSize: '0.9rem'
+                    marginTop: '20px',
+                    paddingTop: '18px',
+                    borderTop:
+                      '1px solid #eee',
+                    color: '#6b7280',
+                    fontSize: '0.9rem',
+                    lineHeight: 1.6
                   }}
                 >
-
-                  {totalGuests > totalCapacity
-                    ? '⚠️'
-                    : '✓'}{' '}
-
+                  🔒{' '}
                   {isAm
-                    ? `የክፍል አቅም፡ ${totalCapacity} ሰዎች`
-                    : `Room capacity: ${totalCapacity} guests`}
-
+                    ? 'የእርስዎ የማዘዣ መረጃ በደህና ይቀመጣል።'
+                    : 'Your reservation information is securely stored.'}
                 </div>
 
-
-                {/* CONTACT */}
-
-                <div
+                <Link
+                  to="/contact"
                   style={{
-                    marginTop: '25px',
-                    paddingTop: '20px',
-                    borderTop: '1px solid #eee'
+                    display: 'block',
+                    marginTop: '18px',
+                    textAlign: 'center',
+                    color: '#e67e22',
+                    textDecoration: 'none',
+                    fontWeight: '700'
                   }}
                 >
-
-                  <p
-                    style={{
-                      color: '#6b7280',
-                      fontSize: '0.9rem',
-                      lineHeight: '1.6',
-                      margin: 0
-                    }}
-                  >
-                    💬{' '}
-                    {isAm
-                      ? 'ለተጨማሪ መረጃ እባክዎ ያግኙን።'
-                      : 'Need help with your reservation? Contact us anytime.'}
-                  </p>
-
-                  <Link
-                    to="/contact"
-                    style={{
-                      display: 'inline-block',
-                      marginTop: '12px',
-                      color: '#e67e22',
-                      textDecoration: 'none',
-                      fontWeight: '700'
-                    }}
-                  >
-                    {isAm
-                      ? 'Contact Us →'
-                      : 'Contact Us →'}
-                  </Link>
-
-                </div>
+                  {isAm
+                    ? 'እርዳታ ይፈልጋሉ? →'
+                    : 'Need help? →'}
+                </Link>
 
               </div>
 
@@ -1683,7 +1190,48 @@ const Booking = ({ lang }) => {
 
         </div>
 
-      </section>
+      </main>
+
+
+      {/* =================================
+          RESPONSIVE STYLE
+      ================================= */}
+
+      <style>
+        {`
+          @media (max-width: 850px) {
+            .booking-grid {
+              grid-template-columns: 1fr !important;
+            }
+
+            .booking-grid aside {
+              position: static !important;
+            }
+          }
+
+          input:focus,
+          select:focus,
+          textarea:focus {
+            border-color: #e67e22 !important;
+            box-shadow: 0 0 0 3px rgba(230,126,34,0.12);
+          }
+
+          button {
+            font-family: inherit;
+          }
+
+          button:hover:not(:disabled) {
+            transform: translateY(-1px);
+          }
+
+          input,
+          select,
+          textarea,
+          button {
+            transition: all 0.2s ease;
+          }
+        `}
+      </style>
 
     </div>
   );
@@ -1691,27 +1239,227 @@ const Booking = ({ lang }) => {
 
 
 // =====================================
-// SHARED STYLES
+// COMPONENTS
 // =====================================
 
-const labelStyle = {
-  display: 'block',
-  marginBottom: '8px',
-  color: '#374151',
-  fontWeight: '600',
-  fontSize: '0.92rem'
-};
+const SectionTitle = ({ small, title }) => (
+  <div
+    style={{
+      marginBottom: '22px'
+    }}
+  >
+
+    <div
+      style={{
+        color: '#e67e22',
+        fontWeight: '800',
+        fontSize: '0.8rem',
+        letterSpacing: '1px'
+      }}
+    >
+      {small}
+    </div>
+
+    <h2
+      style={{
+        margin: '7px 0 0',
+        fontSize: '1.65rem',
+        color: '#172033'
+      }}
+    >
+      {title}
+    </h2>
+
+  </div>
+);
+
+
+const Input = ({
+  label,
+  name,
+  type = 'text',
+  value,
+  onChange,
+  placeholder,
+  min
+}) => (
+  <div>
+
+    <label
+      style={{
+        display: 'block',
+        marginBottom: '8px',
+        fontWeight: '700',
+        color: '#374151'
+      }}
+    >
+      {label}
+    </label>
+
+    <input
+      type={type}
+      name={name}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      min={min}
+      required
+      style={inputStyle}
+    />
+
+  </div>
+);
+
+
+const Counter = ({
+  icon,
+  title,
+  subtitle,
+  value,
+  onMinus,
+  onPlus
+}) => (
+  <div
+    style={{
+      padding: '18px',
+      border: '1px solid #e5e7eb',
+      borderRadius: '15px',
+      background: '#fff'
+    }}
+  >
+
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        marginBottom: '15px'
+      }}
+    >
+
+      <span
+        style={{
+          fontSize: '1.5rem'
+        }}
+      >
+        {icon}
+      </span>
+
+      <div>
+
+        <strong
+          style={{
+            display: 'block'
+          }}
+        >
+          {title}
+        </strong>
+
+        <small
+          style={{
+            color: '#777'
+          }}
+        >
+          {subtitle}
+        </small>
+
+      </div>
+
+    </div>
+
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}
+    >
+
+      <button
+        type="button"
+        onClick={onMinus}
+        style={counterButton}
+      >
+        −
+      </button>
+
+      <strong
+        style={{
+          fontSize: '1.3rem'
+        }}
+      >
+        {value}
+      </strong>
+
+      <button
+        type="button"
+        onClick={onPlus}
+        style={counterButton}
+      >
+        +
+      </button>
+
+    </div>
+
+  </div>
+);
+
+
+const SummaryRow = ({ label, value }) => (
+  <div
+    style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      padding: '11px 0',
+      borderBottom: '1px solid #f0f0f0',
+      gap: '15px'
+    }}
+  >
+
+    <span
+      style={{
+        color: '#6b7280'
+      }}
+    >
+      {label}
+    </span>
+
+    <strong>
+      {value}
+    </strong>
+
+  </div>
+);
+
+
+// =====================================
+// STYLES
+// =====================================
 
 const inputStyle = {
   width: '100%',
+  boxSizing: 'border-box',
   padding: '13px 14px',
   borderRadius: '11px',
   border: '1px solid #dfe3e8',
-  backgroundColor: '#fff',
+  background: '#fff',
   color: '#172033',
   fontSize: '1rem',
-  outline: 'none',
-  boxSizing: 'border-box'
+  outline: 'none'
+};
+
+const counterButton = {
+  width: '38px',
+  height: '38px',
+  borderRadius: '50%',
+  border: '1px solid #e5e7eb',
+  background: '#f8fafc',
+  color: '#172033',
+  fontSize: '1.3rem',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center'
 };
 
 export default Booking;
