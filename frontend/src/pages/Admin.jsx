@@ -1,16 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db, auth } from '../firebase';
-
 import {
   collection,
   getDocs,
   doc,
   updateDoc,
   deleteDoc,
-  query,
-  orderBy
+  orderBy,
+  query
 } from 'firebase/firestore';
-
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -18,51 +16,54 @@ import {
 } from 'firebase/auth';
 
 const Admin = () => {
+  // =========================
+  // AUTH
+  // =========================
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  const [bookings, setBookings] = useState([]);
-  const [reviews, setReviews] = useState([]);
-  const [messages, setMessages] = useState([]);
-
-  const [loading, setLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState('overview');
+  // =========================
+  // DATA
+  // =========================
+  const [bookings, setBookings] = useState([]);
+  const [reviews, setReviews] = useState([]);
 
-  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
 
-  // =========================================================
-  // AUTH
-  // =========================================================
+  // =========================
+  // SEARCH / FILTER
+  // =========================
+  const [bookingSearch, setBookingSearch] = useState('');
+  const [bookingFilter, setBookingFilter] = useState('all');
 
+  // =========================
+  // AUTH LISTENER
+  // =========================
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      setAuthLoading(false);
 
       if (currentUser) {
         fetchAllData();
-      } else {
-        setBookings([]);
-        setReviews([]);
-        setMessages([]);
       }
     });
 
     return () => unsubscribe();
   }, []);
 
-  // =========================================================
-  // FETCH ALL DATA
-  // =========================================================
-
+  // =========================
+  // FETCH DATA
+  // =========================
   const fetchAllData = async () => {
     setLoading(true);
 
     try {
-      // BOOKINGS
       const bookingsQuery = query(
         collection(db, 'bookings'),
         orderBy('createdAt', 'desc')
@@ -77,7 +78,6 @@ const Admin = () => {
 
       setBookings(bookingsData);
 
-      // REVIEWS
       const reviewsSnapshot = await getDocs(
         collection(db, 'reviews')
       );
@@ -88,53 +88,44 @@ const Admin = () => {
       }));
 
       setReviews(reviewsData);
-
-      // MESSAGES
-      const messagesQuery = query(
-        collection(db, 'messages'),
-        orderBy('createdAt', 'desc')
-      );
-
-      const messagesSnapshot = await getDocs(messagesQuery);
-
-      const messagesData = messagesSnapshot.docs.map((item) => ({
-        id: item.id,
-        ...item.data()
-      }));
-
-      setMessages(messagesData);
-
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Fetch error:', error);
 
-      // If createdAt orderBy causes an index/timestamp problem,
-      // still try to fetch the collections normally.
+      // fallback if createdAt/orderBy causes an index or missing-field issue
       try {
         const bookingsSnapshot = await getDocs(
           collection(db, 'bookings')
         );
 
-        setBookings(
-          bookingsSnapshot.docs.map((item) => ({
-            id: item.id,
-            ...item.data()
-          }))
+        const bookingsData = bookingsSnapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data()
+        }));
+
+        bookingsData.sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+
+          return dateB - dateA;
+        });
+
+        setBookings(bookingsData);
+
+        const reviewsSnapshot = await getDocs(
+          collection(db, 'reviews')
         );
 
-        const messagesSnapshot = await getDocs(
-          collection(db, 'messages')
-        );
+        const reviewsData = reviewsSnapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data()
+        }));
 
-        setMessages(
-          messagesSnapshot.docs.map((item) => ({
-            id: item.id,
-            ...item.data()
-          }))
-        );
-      } catch (fallbackError) {
-        console.error(
-          'Fallback fetch error:',
-          fallbackError
+        setReviews(reviewsData);
+      } catch (secondError) {
+        console.error('Fallback fetch error:', secondError);
+
+        alert(
+          'Unable to load data. Please check your Firebase connection and Firestore rules.'
         );
       }
     }
@@ -142,10 +133,9 @@ const Admin = () => {
     setLoading(false);
   };
 
-  // =========================================================
+  // =========================
   // LOGIN
-  // =========================================================
-
+  // =========================
   const handleLogin = async (e) => {
     e.preventDefault();
 
@@ -154,1727 +144,951 @@ const Admin = () => {
     try {
       await signInWithEmailAndPassword(
         auth,
-        email,
+        email.trim(),
         password
       );
-
-      setEmail('');
-      setPassword('');
-
     } catch (error) {
       console.error(error);
 
       alert(
-        '❌ የተሳሳተ ኢሜይል ወይም የይለፍ ቃል!\n\nPlease check your email and password.'
+        '❌ Incorrect email or password.'
       );
     }
 
     setLoginLoading(false);
   };
 
-  // =========================================================
+  // =========================
   // LOGOUT
-  // =========================================================
-
+  // =========================
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      setEmail('');
+      setPassword('');
     } catch (error) {
       console.error(error);
     }
   };
 
-  // =========================================================
-  // BOOKING STATUS
-  // =========================================================
-
-  const handleStatusChange = async (id, status) => {
+  // =========================
+  // CONFIRM BOOKING
+  // =========================
+  const handleConfirmBooking = async (id) => {
     try {
-      await updateDoc(
-        doc(db, 'bookings', id),
-        {
-          status
-        }
-      );
+      await updateDoc(doc(db, 'bookings', id), {
+        status: 'Confirmed',
+        confirmedAt: new Date().toISOString()
+      });
 
       await fetchAllData();
-
     } catch (error) {
       console.error(error);
-
-      alert(
-        'Unable to update booking status.'
-      );
+      alert('Unable to confirm booking.');
     }
   };
 
-  // =========================================================
-  // DELETE BOOKING
-  // =========================================================
+  // =========================
+  // CANCEL BOOKING
+  // =========================
+  const handleCancelBooking = async (id) => {
+    try {
+      await updateDoc(doc(db, 'bookings', id), {
+        status: 'Cancelled',
+        cancelledAt: new Date().toISOString()
+      });
 
+      await fetchAllData();
+    } catch (error) {
+      console.error(error);
+      alert('Unable to cancel booking.');
+    }
+  };
+
+  // =========================
+  // DELETE BOOKING
+  // =========================
   const handleDeleteBooking = async (id) => {
     const confirmed = window.confirm(
-      'ይህንን booking ማጥፋት ይፈልጋሉ?\n\nAre you sure you want to delete this booking?'
+      'Are you sure you want to permanently delete this booking?'
     );
 
     if (!confirmed) return;
 
     try {
-      await deleteDoc(
-        doc(db, 'bookings', id)
-      );
-
+      await deleteDoc(doc(db, 'bookings', id));
       await fetchAllData();
-
     } catch (error) {
       console.error(error);
-
-      alert(
-        'Unable to delete booking.'
-      );
+      alert('Unable to delete booking.');
     }
   };
 
-  // =========================================================
+  // =========================
   // DELETE REVIEW
-  // =========================================================
-
+  // =========================
   const handleDeleteReview = async (id) => {
     const confirmed = window.confirm(
-      'ይህንን review ማጥፋት ይፈልጋሉ?\n\nAre you sure you want to delete this review?'
+      'Are you sure you want to delete this review?'
     );
 
     if (!confirmed) return;
 
     try {
-      await deleteDoc(
-        doc(db, 'reviews', id)
-      );
-
+      await deleteDoc(doc(db, 'reviews', id));
       await fetchAllData();
-
     } catch (error) {
       console.error(error);
-
-      alert(
-        'Unable to delete review.'
-      );
+      alert('Unable to delete review.');
     }
   };
 
-  // =========================================================
-  // MESSAGE STATUS
-  // =========================================================
-
-  const handleMessageStatus = async (
-    id,
-    currentStatus
-  ) => {
-    try {
-      await updateDoc(
-        doc(db, 'messages', id),
-        {
-          status:
-            currentStatus === 'read'
-              ? 'unread'
-              : 'read'
-        }
-      );
-
-      await fetchAllData();
-
-    } catch (error) {
-      console.error(error);
-
-      alert(
-        'Unable to update message.'
-      );
-    }
-  };
-
-  // =========================================================
-  // DELETE MESSAGE
-  // =========================================================
-
-  const handleDeleteMessage = async (id) => {
-    const confirmed = window.confirm(
-      'ይህንን message ማጥፋት ይፈልጋሉ?\n\nAre you sure you want to delete this message?'
-    );
-
-    if (!confirmed) return;
-
-    try {
-      await deleteDoc(
-        doc(db, 'messages', id)
-      );
-
-      await fetchAllData();
-
-    } catch (error) {
-      console.error(error);
-
-      alert(
-        'Unable to delete message.'
-      );
-    }
-  };
-
-  // =========================================================
+  // =========================
   // STATISTICS
-  // =========================================================
+  // =========================
+  const stats = useMemo(() => {
+    const total = bookings.length;
 
-  const confirmedBookings = bookings.filter(
-    (b) =>
-      b.status?.includes('Confirmed')
-  ).length;
+    const confirmed = bookings.filter(
+      (b) =>
+        String(b.status || '').toLowerCase() === 'confirmed' ||
+        String(b.status || '').includes('✅')
+    ).length;
 
-  const pendingBookings = bookings.filter(
-    (b) =>
-      !b.status?.includes('Confirmed')
-  ).length;
+    const pending = bookings.filter(
+      (b) =>
+        String(b.status || '').toLowerCase().includes('pending') ||
+        String(b.status || '').includes('⏳')
+    ).length;
 
-  const unreadMessages = messages.filter(
-    (m) =>
-      m.status !== 'read'
-  ).length;
+    const cancelled = bookings.filter(
+      (b) =>
+        String(b.status || '').toLowerCase().includes('cancelled')
+    ).length;
 
-  const totalReviews = reviews.length;
+    const revenue = bookings
+      .filter(
+        (b) =>
+          String(b.status || '').toLowerCase() === 'confirmed' ||
+          String(b.status || '').includes('✅')
+      )
+      .reduce((sum, booking) => {
+        const value = Number(
+          booking.totalPrice ||
+          booking.totalAmount ||
+          booking.amount ||
+          0
+        );
 
-  const averageRating = useMemo(() => {
-    if (reviews.length === 0) return '0.0';
+        return sum + (Number.isFinite(value) ? value : 0);
+      }, 0);
 
-    const total = reviews.reduce(
-      (sum, review) =>
-        sum +
-        (Number(review.rating) || 0),
-      0
-    );
+    return {
+      total,
+      confirmed,
+      pending,
+      cancelled,
+      revenue
+    };
+  }, [bookings]);
 
+  // =========================
+  // FILTER BOOKINGS
+  // =========================
+  const filteredBookings = useMemo(() => {
+    return bookings.filter((booking) => {
+      const search = bookingSearch.toLowerCase();
+
+      const matchesSearch =
+        !search ||
+        String(booking.name || '')
+          .toLowerCase()
+          .includes(search) ||
+        String(booking.phone || '')
+          .toLowerCase()
+          .includes(search) ||
+        String(booking.room || '')
+          .toLowerCase()
+          .includes(search);
+
+      const status = String(
+        booking.status || ''
+      ).toLowerCase();
+
+      let matchesFilter = true;
+
+      if (bookingFilter === 'pending') {
+        matchesFilter =
+          status.includes('pending') ||
+          status.includes('⏳');
+      }
+
+      if (bookingFilter === 'confirmed') {
+        matchesFilter =
+          status.includes('confirmed') ||
+          status.includes('✅');
+      }
+
+      if (bookingFilter === 'cancelled') {
+        matchesFilter = status.includes('cancelled');
+      }
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [bookings, bookingSearch, bookingFilter]);
+
+  // =========================
+  // HELPERS
+  // =========================
+  const getStatusStyle = (status) => {
+    const value = String(status || '').toLowerCase();
+
+    if (value.includes('confirmed') || value.includes('✅')) {
+      return {
+        background: '#dcfce7',
+        color: '#15803d'
+      };
+    }
+
+    if (value.includes('cancelled')) {
+      return {
+        background: '#fee2e2',
+        color: '#dc2626'
+      };
+    }
+
+    return {
+      background: '#fef3c7',
+      color: '#b45309'
+    };
+  };
+
+  const formatMoney = (value) => {
+    const number = Number(value);
+
+    if (!Number.isFinite(number) || number === 0) {
+      return '-';
+    }
+
+    return `${number.toLocaleString()} ETB`;
+  };
+
+  const formatDate = (date) => {
+    if (!date) return '-';
+
+    try {
+      return new Date(date).toLocaleDateString();
+    } catch {
+      return date;
+    }
+  };
+
+  // =========================
+  // LOADING AUTH
+  // =========================
+  if (authLoading) {
     return (
-      total / reviews.length
-    ).toFixed(1);
-  }, [reviews]);
+      <div style={styles.fullScreenLoader}>
+        <div style={styles.loaderIcon}>🏨</div>
+        <h3>Loading Z Addis Hotel...</h3>
+      </div>
+    );
+  }
 
-  // =========================================================
-  // SEARCH
-  // =========================================================
-
-  const filteredBookings = bookings.filter(
-    (b) => {
-      const text = `
-        ${b.name || ''}
-        ${b.phone || ''}
-        ${b.room || ''}
-      `.toLowerCase();
-
-      return text.includes(
-        search.toLowerCase()
-      );
-    }
-  );
-
-  const filteredMessages = messages.filter(
-    (m) => {
-      const text = `
-        ${m.name || ''}
-        ${m.phone || ''}
-        ${m.email || ''}
-        ${m.message || ''}
-      `.toLowerCase();
-
-      return text.includes(
-        search.toLowerCase()
-      );
-    }
-  );
-
-  // =========================================================
+  // =========================
   // LOGIN PAGE
-  // =========================================================
-
+  // =========================
   if (!user) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          background:
-            'linear-gradient(135deg,#0f172a,#1e293b)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: '20px',
-          fontFamily:
-            "'Segoe UI', Tahoma, sans-serif"
-        }}
-      >
+      <div style={styles.loginPage}>
+        <div style={styles.loginBackground}></div>
 
         <form
           onSubmit={handleLogin}
-          style={{
-            width: '100%',
-            maxWidth: '420px',
-            background: '#fff',
-            padding: '45px',
-            borderRadius: '25px',
-            boxShadow:
-              '0 25px 70px rgba(0,0,0,0.35)',
-            boxSizing: 'border-box'
-          }}
+          style={styles.loginCard}
         >
-
-          <div
-            style={{
-              width: '75px',
-              height: '75px',
-              borderRadius: '22px',
-              background:
-                'linear-gradient(135deg,#e67e22,#f39c12)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '2.3rem',
-              margin:
-                '0 auto 20px'
-            }}
-          >
-            🔐
+          <div style={styles.loginLogo}>
+            🏨
           </div>
 
-          <h1
-            style={{
-              textAlign: 'center',
-              color: '#172033',
-              margin: '0 0 8px'
-            }}
-          >
+          <h1 style={styles.loginTitle}>
             Z Addis Hotel
           </h1>
 
-          <p
-            style={{
-              textAlign: 'center',
-              color: '#6b7280',
-              marginBottom: '30px'
-            }}
-          >
-            Secure Admin Dashboard
+          <p style={styles.loginSubtitle}>
+            Admin Dashboard
           </p>
 
-          <label
-            style={{
-              display: 'block',
-              fontWeight: '700',
-              marginBottom: '8px'
-            }}
-          >
-            Admin Email
+          <div style={styles.secureBadge}>
+            🔐 Secure Administrator Login
+          </div>
+
+          <label style={styles.label}>
+            Email Address
           </label>
 
           <input
             type="email"
             value={email}
-            onChange={(e) =>
-              setEmail(e.target.value)
-            }
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="admin@example.com"
             required
-            style={inputStyle}
+            style={styles.input}
           />
 
-          <label
-            style={{
-              display: 'block',
-              fontWeight: '700',
-              margin:
-                '18px 0 8px'
-            }}
-          >
+          <label style={styles.label}>
             Password
           </label>
 
           <input
             type="password"
             value={password}
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
-            placeholder="Enter password"
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
             required
-            style={inputStyle}
+            style={styles.input}
           />
 
           <button
             type="submit"
             disabled={loginLoading}
             style={{
-              width: '100%',
-              marginTop: '25px',
-              padding: '15px',
-              border: 'none',
-              borderRadius: '12px',
-              background:
-                loginLoading
-                  ? '#9ca3af'
-                  : 'linear-gradient(135deg,#e67e22,#f39c12)',
-              color: '#fff',
-              fontSize: '1rem',
-              fontWeight: '800',
-              cursor:
-                loginLoading
-                  ? 'not-allowed'
-                  : 'pointer'
+              ...styles.loginButton,
+              opacity: loginLoading ? 0.7 : 1
             }}
           >
             {loginLoading
-              ? 'Logging in...'
-              : '🔓 Login'}
+              ? 'Signing in...'
+              : 'Sign In'}
           </button>
-
         </form>
       </div>
     );
   }
 
-  // =========================================================
+  // =========================
   // ADMIN DASHBOARD
-  // =========================================================
-
+  // =========================
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: '#f5f7fa',
-        fontFamily:
-          "'Segoe UI', Tahoma, sans-serif",
-        color: '#172033'
-      }}
-    >
+    <div style={styles.page}>
 
       {/* HEADER */}
-
-      <header
-        style={{
-          background:
-            'linear-gradient(135deg,#0f172a,#1e293b)',
-          color: '#fff',
-          padding:
-            '25px clamp(20px,5vw,60px)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 20,
-          boxShadow:
-            '0 5px 25px rgba(0,0,0,0.15)'
-        }}
-      >
-
-        <div
-          style={{
-            maxWidth: '1400px',
-            margin: 'auto',
-            display: 'flex',
-            justifyContent:
-              'space-between',
-            alignItems: 'center',
-            gap: '20px',
-            flexWrap: 'wrap'
-          }}
-        >
-
-          <div>
-
-            <div
-              style={{
-                color: '#f39c12',
-                fontWeight: '800',
-                fontSize: '0.8rem',
-                letterSpacing: '1px'
-              }}
-            >
-              Z ADDIS HOTEL
-            </div>
-
-            <h1
-              style={{
-                margin: '5px 0 0',
-                fontSize:
-                  'clamp(1.4rem,3vw,2rem)'
-              }}
-            >
-              🛡️ Admin Dashboard
-            </h1>
-
+      <header style={styles.header}>
+        <div>
+          <div style={styles.brand}>
+            Z ADDIS
           </div>
 
-
-          <div
-            style={{
-              display: 'flex',
-              gap: '10px',
-              alignItems: 'center',
-              flexWrap: 'wrap'
-            }}
-          >
-
-            <span
-              style={{
-                background:
-                  'rgba(255,255,255,0.08)',
-                padding:
-                  '9px 14px',
-                borderRadius: '10px',
-                fontSize:
-                  '0.85rem',
-                color: '#cbd5e1'
-              }}
-            >
-              {user.email}
-            </span>
-
-            <button
-              onClick={fetchAllData}
-              style={{
-                ...smallButton,
-                background: '#2563eb'
-              }}
-            >
-              🔄 Refresh
-            </button>
-
-            <button
-              onClick={handleLogout}
-              style={{
-                ...smallButton,
-                background: '#dc2626'
-              }}
-            >
-              🔒 Logout
-            </button>
-
+          <div style={styles.brandSub}>
+            HOTEL ADMINISTRATION
           </div>
-
         </div>
 
+        <div style={styles.headerRight}>
+          <div style={styles.adminInfo}>
+            <div style={styles.adminAvatar}>
+              👤
+            </div>
+
+            <div>
+              <strong>Administrator</strong>
+              <small>{user.email}</small>
+            </div>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            style={styles.logoutButton}
+          >
+            🚪 Logout
+          </button>
+        </div>
       </header>
 
-
-      <main
-        style={{
-          maxWidth: '1400px',
-          margin: 'auto',
-          padding:
-            '35px clamp(15px,4vw,45px) 70px'
-        }}
-      >
-
-        {/* STAT CARDS */}
-
-        <div
-          className="admin-stats"
+      {/* NAVIGATION */}
+      <nav style={styles.nav}>
+        <button
+          onClick={() => setActiveTab('dashboard')}
           style={{
-            display: 'grid',
-            gridTemplateColumns:
-              'repeat(4,1fr)',
-            gap: '20px',
-            marginBottom: '30px'
+            ...styles.navButton,
+            ...(activeTab === 'dashboard'
+              ? styles.navButtonActive
+              : {})
           }}
         >
+          📊 Dashboard
+        </button>
 
-          <StatCard
-            icon="📅"
-            title="Total Bookings"
-            value={bookings.length}
-            color="#2563eb"
-          />
-
-          <StatCard
-            icon="⏳"
-            title="Pending"
-            value={pendingBookings}
-            color="#f59e0b"
-          />
-
-          <StatCard
-            icon="💬"
-            title="Unread Messages"
-            value={unreadMessages}
-            color="#e67e22"
-          />
-
-          <StatCard
-            icon="⭐"
-            title="Reviews"
-            value={`${averageRating} / 5`}
-            subtitle={`${totalReviews} reviews`}
-            color="#f59e0b"
-          />
-
-        </div>
-
-
-        {/* NAVIGATION */}
-
-        <div
+        <button
+          onClick={() => setActiveTab('bookings')}
           style={{
-            background: '#fff',
-            borderRadius: '16px',
-            padding: '8px',
-            display: 'flex',
-            gap: '5px',
-            marginBottom: '30px',
-            boxShadow:
-              '0 5px 20px rgba(0,0,0,0.06)',
-            overflowX: 'auto'
+            ...styles.navButton,
+            ...(activeTab === 'bookings'
+              ? styles.navButtonActive
+              : {})
           }}
         >
+          📅 Bookings
+          <span style={styles.navCount}>
+            {bookings.length}
+          </span>
+        </button>
 
-          <NavButton
-            active={
-              activeTab === 'overview'
-            }
-            onClick={() =>
-              setActiveTab('overview')
-            }
-          >
-            📊 Overview
-          </NavButton>
+        <button
+          onClick={() => setActiveTab('reviews')}
+          style={{
+            ...styles.navButton,
+            ...(activeTab === 'reviews'
+              ? styles.navButtonActive
+              : {})
+          }}
+        >
+          ⭐ Reviews
+          <span style={styles.navCount}>
+            {reviews.length}
+          </span>
+        </button>
 
-          <NavButton
-            active={
-              activeTab === 'bookings'
-            }
-            onClick={() =>
-              setActiveTab('bookings')
-            }
-          >
-            📅 Bookings
-            {bookings.length > 0 && (
-              <Badge>
-                {bookings.length}
-              </Badge>
-            )}
-          </NavButton>
+        <button
+          onClick={fetchAllData}
+          style={styles.refreshButton}
+        >
+          🔄 Refresh
+        </button>
+      </nav>
 
-          <NavButton
-            active={
-              activeTab === 'messages'
-            }
-            onClick={() =>
-              setActiveTab('messages')
-            }
-          >
-            💬 Messages
-            {unreadMessages > 0 && (
-              <Badge>
-                {unreadMessages}
-              </Badge>
-            )}
-          </NavButton>
+      {/* CONTENT */}
+      <main style={styles.content}>
 
-          <NavButton
-            active={
-              activeTab === 'reviews'
-            }
-            onClick={() =>
-              setActiveTab('reviews')
-            }
-          >
-            ⭐ Reviews
-          </NavButton>
-
-        </div>
-
-
-        {/* SEARCH */}
-
-        {(activeTab === 'bookings' ||
-          activeTab === 'messages') && (
-
-          <div
-            style={{
-              marginBottom: '20px'
-            }}
-          >
-
-            <input
-              type="search"
-              value={search}
-              onChange={(e) =>
-                setSearch(e.target.value)
-              }
-              placeholder={
-                activeTab === 'bookings'
-                  ? '🔍 Search bookings by name, phone or room...'
-                  : '🔍 Search messages by name, phone, email...'
-              }
-              style={{
-                ...inputStyle,
-                maxWidth: '600px',
-                background: '#fff'
-              }}
-            />
-
-          </div>
-
-        )}
-
-
-        {/* LOADING */}
-
-        {loading ? (
-
-          <div
-            style={{
-              background: '#fff',
-              padding: '70px 20px',
-              borderRadius: '20px',
-              textAlign: 'center'
-            }}
-          >
-            <div
-              style={{
-                fontSize: '3rem'
-              }}
-            >
-              ⏳
-            </div>
-
-            <h3>
-              Loading dashboard...
-            </h3>
-
-          </div>
-
-        ) : (
-
+        {/* ================= DASHBOARD ================= */}
+        {activeTab === 'dashboard' && (
           <>
-
-            {/* =================================================
-                OVERVIEW
-            ================================================= */}
-
-            {activeTab === 'overview' && (
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns:
-                    '1fr 1fr',
-                  gap: '25px'
-                }}
-                className="overview-grid"
-              >
-
-                {/* RECENT BOOKINGS */}
-
-                <section
-                  style={panelStyle}
-                >
-
-                  <SectionHeader
-                    title="Recent Bookings"
-                    icon="📅"
-                    onClick={() =>
-                      setActiveTab(
-                        'bookings'
-                      )
-                    }
-                  />
-
-                  {bookings.length === 0 ? (
-
-                    <EmptyState
-                      icon="📭"
-                      text="No bookings yet"
-                    />
-
-                  ) : (
-
-                    bookings
-                      .slice(0, 5)
-                      .map((booking) => (
-
-                        <BookingMini
-                          key={booking.id}
-                          booking={booking}
-                        />
-
-                      ))
-
-                  )}
-
-                </section>
-
-
-                {/* MESSAGES */}
-
-                <section
-                  style={panelStyle}
-                >
-
-                  <SectionHeader
-                    title="Customer Messages"
-                    icon="💬"
-                    onClick={() =>
-                      setActiveTab(
-                        'messages'
-                      )
-                    }
-                  />
-
-                  {messages.length === 0 ? (
-
-                    <EmptyState
-                      icon="📭"
-                      text="No messages yet"
-                    />
-
-                  ) : (
-
-                    messages
-                      .slice(0, 5)
-                      .map((message) => (
-
-                        <MessageMini
-                          key={message.id}
-                          message={message}
-                        />
-
-                      ))
-
-                  )}
-
-                </section>
-
-
-                {/* QUICK SUMMARY */}
-
-                <section
-                  style={{
-                    ...panelStyle,
-                    gridColumn:
-                      '1 / -1'
-                  }}
-                >
-
-                  <SectionHeader
-                    title="Quick Summary"
-                    icon="📈"
-                  />
-
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns:
-                        'repeat(3,1fr)',
-                      gap: '15px'
-                    }}
-                    className="summary-grid"
-                  >
-
-                    <SummaryBox
-                      title="Confirmed Bookings"
-                      value={confirmedBookings}
-                      icon="✅"
-                    />
-
-                    <SummaryBox
-                      title="Pending Bookings"
-                      value={pendingBookings}
-                      icon="⏳"
-                    />
-
-                    <SummaryBox
-                      title="Unread Messages"
-                      value={unreadMessages}
-                      icon="📩"
-                    />
-
-                  </div>
-
-                </section>
-
+            <div style={styles.pageHeading}>
+              <div>
+                <h1>Dashboard Overview</h1>
+                <p>
+                  Manage your hotel bookings and customer reviews.
+                </p>
               </div>
 
-            )}
+              <div style={styles.liveBadge}>
+                ● LIVE
+              </div>
+            </div>
 
+            {/* STAT CARDS */}
+            <div style={styles.statsGrid}>
 
-            {/* =================================================
-                BOOKINGS
-            ================================================= */}
+              <div style={styles.statCard}>
+                <div style={styles.statIcon}>📅</div>
 
-            {activeTab === 'bookings' && (
+                <div>
+                  <span>Total Bookings</span>
+                  <strong>{stats.total}</strong>
+                </div>
+              </div>
 
-              <section style={panelStyle}>
+              <div style={styles.statCard}>
+                <div style={styles.statIcon}>✅</div>
 
-                <SectionHeader
-                  title="All Bookings"
-                  icon="📅"
+                <div>
+                  <span>Confirmed</span>
+                  <strong>{stats.confirmed}</strong>
+                </div>
+              </div>
+
+              <div style={styles.statCard}>
+                <div style={styles.statIcon}>⏳</div>
+
+                <div>
+                  <span>Pending</span>
+                  <strong>{stats.pending}</strong>
+                </div>
+              </div>
+
+              <div style={styles.statCard}>
+                <div style={styles.statIcon}>⭐</div>
+
+                <div>
+                  <span>Reviews</span>
+                  <strong>{reviews.length}</strong>
+                </div>
+              </div>
+
+              <div style={styles.statCard}>
+                <div style={styles.statIcon}>💰</div>
+
+                <div>
+                  <span>Confirmed Revenue</span>
+                  <strong style={{ fontSize: '1.2rem' }}>
+                    {formatMoney(stats.revenue)}
+                  </strong>
+                </div>
+              </div>
+
+            </div>
+
+            {/* RECENT BOOKINGS */}
+            <section style={styles.section}>
+              <div style={styles.sectionHeader}>
+                <div>
+                  <h2>Recent Bookings</h2>
+                  <p>Latest hotel reservations</p>
+                </div>
+
+                <button
+                  onClick={() => setActiveTab('bookings')}
+                  style={styles.viewButton}
+                >
+                  View All →
+                </button>
+              </div>
+
+              {loading ? (
+                <LoadingBox />
+              ) : bookings.length === 0 ? (
+                <EmptyBox text="No bookings yet." />
+              ) : (
+                <BookingTable
+                  bookings={bookings.slice(0, 5)}
+                  onConfirm={handleConfirmBooking}
+                  onCancel={handleCancelBooking}
+                  onDelete={handleDeleteBooking}
+                  getStatusStyle={getStatusStyle}
+                  formatMoney={formatMoney}
+                  formatDate={formatDate}
+                  compact
                 />
-
-                {filteredBookings.length === 0 ? (
-
-                  <EmptyState
-                    icon="📭"
-                    text="No bookings found"
-                  />
-
-                ) : (
-
-                  <div
-                    style={{
-                      overflowX: 'auto'
-                    }}
-                  >
-
-                    <table
-                      style={tableStyle}
-                    >
-
-                      <thead>
-
-                        <tr>
-
-                          <th>Name</th>
-                          <th>Phone</th>
-                          <th>Room</th>
-                          <th>Guests</th>
-                          <th>Dates</th>
-                          <th>Price</th>
-                          <th>Status</th>
-                          <th>Actions</th>
-
-                        </tr>
-
-                      </thead>
-
-                      <tbody>
-
-                        {filteredBookings.map(
-                          (b) => (
-
-                            <tr key={b.id}>
-
-                              <td>
-                                <strong>
-                                  {b.name ||
-                                    'Unknown'}
-                                </strong>
-                              </td>
-
-                              <td>
-                                {b.phone ||
-                                  '-'}
-                              </td>
-
-                              <td>
-                                <strong>
-                                  {b.room ||
-                                    '-'}
-                                </strong>
-                              </td>
-
-                              <td>
-                                {b.adults ||
-                                  1}{' '}
-                                Adults
-                                {b.children
-                                  ? ` • ${b.children} Children`
-                                  : ''}
-                                {b.rooms
-                                  ? ` • ${b.rooms} Room(s)`
-                                  : ''}
-                              </td>
-
-                              <td>
-                                <div>
-                                  {b.checkIn ||
-                                    '-'}
-                                </div>
-                                <small
-                                  style={{
-                                    color:
-                                      '#9ca3af'
-                                  }}
-                                >
-                                  to
-                                </small>
-                                <div>
-                                  {b.checkOut ||
-                                    '-'}
-                                </div>
-                              </td>
-
-                              <td>
-                                {b.price ||
-                                  '-'}
-                              </td>
-
-                              <td>
-                                <StatusBadge
-                                  status={
-                                    b.status
-                                  }
-                                />
-                              </td>
-
-                              <td>
-
-                                <div
-                                  style={{
-                                    display:
-                                      'flex',
-                                    gap: '6px',
-                                    flexWrap:
-                                      'wrap'
-                                  }}
-                                >
-
-                                  {!b.status?.includes(
-                                    'Confirmed'
-                                  ) && (
-
-                                    <button
-                                      onClick={() =>
-                                        handleStatusChange(
-                                          b.id,
-                                          'Confirmed ✅'
-                                        )
-                                      }
-                                      style={{
-                                        ...actionButton,
-                                        background:
-                                          '#16a34a'
-                                      }}
-                                    >
-                                      ✓ Confirm
-                                    </button>
-
-                                  )}
-
-                                  <button
-                                    onClick={() =>
-                                      handleStatusChange(
-                                        b.id,
-                                        'Cancelled ❌'
-                                      )
-                                    }
-                                    style={{
-                                      ...actionButton,
-                                      background:
-                                        '#f59e0b'
-                                    }}
-                                  >
-                                    Cancel
-                                  </button>
-
-                                  <button
-                                    onClick={() =>
-                                      handleDeleteBooking(
-                                        b.id
-                                      )
-                                    }
-                                    style={{
-                                      ...actionButton,
-                                      background:
-                                        '#dc2626'
-                                    }}
-                                  >
-                                    🗑 Delete
-                                  </button>
-
-                                </div>
-
-                              </td>
-
-                            </tr>
-
-                          )
-                        )}
-
-                      </tbody>
-
-                    </table>
-
-                  </div>
-
-                )}
-
-              </section>
-
-            )}
-
-
-            {/* =================================================
-                MESSAGES
-            ================================================= */}
-
-            {activeTab === 'messages' && (
-
-              <section style={panelStyle}>
-
-                <SectionHeader
-                  title="Customer Messages"
-                  icon="💬"
-                />
-
-                {filteredMessages.length === 0 ? (
-
-                  <EmptyState
-                    icon="📭"
-                    text="No messages found"
-                  />
-
-                ) : (
-
-                  <div
-                    style={{
-                      display: 'grid',
-                      gap: '18px'
-                    }}
-                  >
-
-                    {filteredMessages.map(
-                      (message) => (
-
-                        <div
-                          key={message.id}
-                          style={{
-                            border:
-                              message.status !==
-                              'read'
-                                ? '2px solid #f59e0b'
-                                : '1px solid #e5e7eb',
-                            borderRadius:
-                              '16px',
-                            padding: '22px',
-                            background:
-                              message.status !==
-                              'read'
-                                ? '#fffaf4'
-                                : '#fff'
-                          }}
-                        >
-
-                          <div
-                            style={{
-                              display:
-                                'flex',
-                              justifyContent:
-                                'space-between',
-                              gap: '20px',
-                              flexWrap:
-                                'wrap'
-                            }}
-                          >
-
-                            <div>
-
-                              <h3
-                                style={{
-                                  margin:
-                                    '0 0 8px'
-                                }}
-                              >
-                                {message.name ||
-                                  'Anonymous'}
-                              </h3>
-
-                              <div
-                                style={{
-                                  display:
-                                    'flex',
-                                  gap: '15px',
-                                  flexWrap:
-                                    'wrap',
-                                  color:
-                                    '#6b7280',
-                                  fontSize:
-                                    '0.9rem'
-                                }}
-                              >
-
-                                <span>
-                                  📞{' '}
-                                  {message.phone ||
-                                    '-'}
-                                </span>
-
-                                <span>
-                                  ✉️{' '}
-                                  {message.email ||
-                                    '-'}
-                                </span>
-
-                              </div>
-
-                            </div>
-
-                            <StatusBadge
-                              status={
-                                message.status ===
-                                'read'
-                                  ? '✓ Read'
-                                  : '● Unread'
-                              }
-                            />
-
-                          </div>
-
-
-                          <div
-                            style={{
-                              marginTop:
-                                '18px',
-                              background:
-                                '#f8fafc',
-                              padding:
-                                '18px',
-                              borderRadius:
-                                '12px',
-                              lineHeight:
-                                '1.7',
-                              whiteSpace:
-                                'pre-wrap'
-                            }}
-                          >
-                            {message.message ||
-                              'No message'}
-                          </div>
-
-
-                          <div
-                            style={{
-                              display:
-                                'flex',
-                              gap: '8px',
-                              marginTop:
-                                '15px',
-                              flexWrap:
-                                'wrap'
-                            }}
-                          >
-
-                            <button
-                              onClick={() =>
-                                handleMessageStatus(
-                                  message.id,
-                                  message.status
-                                )
-                              }
-                              style={{
-                                ...actionButton,
-                                background:
-                                  '#172033'
-                              }}
-                            >
-                              {message.status ===
-                              'read'
-                                ? '↩ Mark Unread'
-                                : '✓ Mark Read'}
-                            </button>
-
-
-                            {message.phone && (
-
-                              <a
-                                href={`tel:${message.phone}`}
-                                style={{
-                                  ...actionButton,
-                                  background:
-                                    '#16a34a',
-                                  textDecoration:
-                                    'none'
-                                }}
-                              >
-                                📞 Call
-                              </a>
-
-                            )}
-
-
-                            {message.phone && (
-
-                              <a
-                                href={`https://wa.me/${String(
-                                  message.phone
-                                ).replace(
-                                  /\D/g,
-                                  ''
-                                )}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  ...actionButton,
-                                  background:
-                                    '#25D366',
-                                  textDecoration:
-                                    'none'
-                                }}
-                              >
-                                💬 WhatsApp
-                              </a>
-
-                            )}
-
-
-                            <button
-                              onClick={() =>
-                                handleDeleteMessage(
-                                  message.id
-                                )
-                              }
-                              style={{
-                                ...actionButton,
-                                background:
-                                  '#dc2626'
-                              }}
-                            >
-                              🗑 Delete
-                            </button>
-
-                          </div>
-
-                        </div>
-
-                      )
-                    )}
-
-                  </div>
-
-                )}
-
-              </section>
-
-            )}
-
-
-            {/* =================================================
-                REVIEWS
-            ================================================= */}
-
-            {activeTab === 'reviews' && (
-
-              <section style={panelStyle}>
-
-                <SectionHeader
-                  title="Customer Reviews"
-                  icon="⭐"
-                />
-
-                {reviews.length === 0 ? (
-
-                  <EmptyState
-                    icon="⭐"
-                    text="No reviews yet"
-                  />
-
-                ) : (
-
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns:
-                        'repeat(2,1fr)',
-                      gap: '20px'
-                    }}
-                    className="reviews-grid"
-                  >
-
-                    {reviews.map(
-                      (review) => (
-
-                        <div
-                          key={review.id}
-                          style={{
-                            border:
-                              '1px solid #e5e7eb',
-                            borderRadius:
-                              '16px',
-                            padding: '22px',
-                            background:
-                              '#fff'
-                          }}
-                        >
-
-                          <div
-                            style={{
-                              display:
-                                'flex',
-                              justifyContent:
-                                'space-between',
-                              gap: '15px'
-                            }}
-                          >
-
-                            <div>
-
-                              <h3
-                                style={{
-                                  margin:
-                                    '0 0 8px'
-                                }}
-                              >
-                                {review.name ||
-                                  review.userName ||
-                                  'Anonymous'}
-                              </h3>
-
-                              <div
-                                style={{
-                                  color:
-                                    '#f59e0b',
-                                  fontSize:
-                                    '1.2rem'
-                                }}
-                              >
-                                {'★'.repeat(
-                                  Math.min(
-                                    5,
-                                    Math.max(
-                                      0,
-                                      Number(
-                                        review.rating
-                                      ) || 0
-                                    )
-                                  )
-                                )}
-
-                                {'☆'.repeat(
-                                  5 -
-                                    Math.min(
-                                      5,
-                                      Math.max(
-                                        0,
-                                        Number(
-                                          review.rating
-                                        ) || 0
-                                      )
-                                    )
-                                )}
-                              </div>
-
-                            </div>
-
-                            <button
-                              onClick={() =>
-                                handleDeleteReview(
-                                  review.id
-                                )
-                              }
-                              style={{
-                                width: '38px',
-                                height: '38px',
-                                border:
-                                  'none',
-                                borderRadius:
-                                  '10px',
-                                background:
-                                  '#fee2e2',
-                                color:
-                                  '#dc2626',
-                                cursor:
-                                  'pointer',
-                                fontSize:
-                                  '1rem'
-                              }}
-                            >
-                              🗑
-                            </button>
-
-                          </div>
-
-
-                          <p
-                            style={{
-                              color:
-                                '#4b5563',
-                              lineHeight:
-                                '1.7',
-                              fontStyle:
-                                'italic',
-                              marginTop:
-                                '18px'
-                            }}
-                          >
-                            "
-                            {review.text ||
-                              review.comment ||
-                              review.reviewText ||
-                              'No comment'}
-                            "
-                          </p>
-
-                        </div>
-
-                      )
-                    )}
-
-                  </div>
-
-                )}
-
-              </section>
-
-            )}
-
+              )}
+            </section>
+
+            {/* RECENT REVIEWS */}
+            <section style={styles.section}>
+              <div style={styles.sectionHeader}>
+                <div>
+                  <h2>Customer Reviews</h2>
+                  <p>What your guests are saying</p>
+                </div>
+
+                <button
+                  onClick={() => setActiveTab('reviews')}
+                  style={styles.viewButton}
+                >
+                  View All →
+                </button>
+              </div>
+
+              {reviews.length === 0 ? (
+                <EmptyBox text="No reviews yet." />
+              ) : (
+                <div style={styles.reviewGrid}>
+                  {reviews.slice(0, 4).map((review) => (
+                    <ReviewCard
+                      key={review.id}
+                      review={review}
+                      onDelete={handleDeleteReview}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
           </>
+        )}
 
+        {/* ================= BOOKINGS ================= */}
+        {activeTab === 'bookings' && (
+          <>
+            <div style={styles.pageHeading}>
+              <div>
+                <h1>Hotel Bookings</h1>
+                <p>
+                  View, confirm, cancel and manage reservations.
+                </p>
+              </div>
+            </div>
+
+            {/* SEARCH */}
+            <div style={styles.toolbar}>
+              <div style={styles.searchBox}>
+                🔎
+                <input
+                  type="text"
+                  placeholder="Search by name, phone or room..."
+                  value={bookingSearch}
+                  onChange={(e) =>
+                    setBookingSearch(e.target.value)
+                  }
+                />
+              </div>
+
+              <select
+                value={bookingFilter}
+                onChange={(e) =>
+                  setBookingFilter(e.target.value)
+                }
+                style={styles.filterSelect}
+              >
+                <option value="all">
+                  All Bookings
+                </option>
+
+                <option value="pending">
+                  Pending
+                </option>
+
+                <option value="confirmed">
+                  Confirmed
+                </option>
+
+                <option value="cancelled">
+                  Cancelled
+                </option>
+              </select>
+            </div>
+
+            {loading ? (
+              <LoadingBox />
+            ) : filteredBookings.length === 0 ? (
+              <EmptyBox text="No bookings found." />
+            ) : (
+              <section style={styles.tableCard}>
+                <BookingTable
+                  bookings={filteredBookings}
+                  onConfirm={handleConfirmBooking}
+                  onCancel={handleCancelBooking}
+                  onDelete={handleDeleteBooking}
+                  getStatusStyle={getStatusStyle}
+                  formatMoney={formatMoney}
+                  formatDate={formatDate}
+                />
+              </section>
+            )}
+          </>
+        )}
+
+        {/* ================= REVIEWS ================= */}
+        {activeTab === 'reviews' && (
+          <>
+            <div style={styles.pageHeading}>
+              <div>
+                <h1>Customer Reviews</h1>
+                <p>
+                  Manage feedback from your hotel guests.
+                </p>
+              </div>
+            </div>
+
+            {reviews.length === 0 ? (
+              <EmptyBox text="No customer reviews yet." />
+            ) : (
+              <div style={styles.reviewGridLarge}>
+                {reviews.map((review) => (
+                  <ReviewCard
+                    key={review.id}
+                    review={review}
+                    onDelete={handleDeleteReview}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
 
       </main>
 
+      {/* FOOTER */}
+      <footer style={styles.footer}>
+        <span>
+          © {new Date().getFullYear()} Z Addis Hotel
+        </span>
 
-      {/* RESPONSIVE */}
-
-      <style>
-        {`
-
-          input:focus {
-            outline: none;
-            border-color: #e67e22 !important;
-            box-shadow: 0 0 0 3px rgba(230,126,34,0.12);
-          }
-
-          button {
-            transition: 0.2s ease;
-          }
-
-          button:hover {
-            transform: translateY(-1px);
-          }
-
-          @media (max-width: 1000px) {
-
-            .admin-stats {
-              grid-template-columns: repeat(2,1fr) !important;
-            }
-
-            .overview-grid {
-              grid-template-columns: 1fr !important;
-            }
-
-            .summary-grid {
-              grid-template-columns: 1fr !important;
-            }
-
-            .reviews-grid {
-              grid-template-columns: 1fr !important;
-            }
-
-          }
-
-          @media (max-width: 600px) {
-
-            .admin-stats {
-              grid-template-columns: 1fr !important;
-            }
-
-          }
-
-        `}
-      </style>
-
+        <span>
+          Admin Dashboard
+        </span>
+      </footer>
     </div>
   );
 };
 
 
-// =========================================================
-// STAT CARD
-// =========================================================
+// =====================================================
+// BOOKING TABLE COMPONENT
+// =====================================================
 
-const StatCard = ({
-  icon,
-  title,
-  value,
-  subtitle,
-  color
+const BookingTable = ({
+  bookings,
+  onConfirm,
+  onCancel,
+  onDelete,
+  getStatusStyle,
+  formatMoney,
+  formatDate,
+  compact = false
 }) => {
+  return (
+    <div style={styles.tableWrapper}>
+      <table style={styles.table}>
+
+        <thead>
+          <tr>
+            <th>Guest</th>
+            <th>Room</th>
+            {!compact && <th>Guests</th>}
+            <th>Stay</th>
+            <th>Status</th>
+            <th>Total</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {bookings.map((booking) => {
+
+            const statusStyle = getStatusStyle(
+              booking.status
+            );
+
+            const adults =
+              Number(booking.adults) || 0;
+
+            const children =
+              Number(booking.children) || 0;
+
+            const rooms =
+              Number(booking.rooms) || 1;
+
+            return (
+              <tr key={booking.id}>
+
+                {/* GUEST */}
+                <td>
+                  <div style={styles.guestCell}>
+                    <div style={styles.guestAvatar}>
+                      {String(
+                        booking.name || 'G'
+                      )
+                        .charAt(0)
+                        .toUpperCase()}
+                    </div>
+
+                    <div>
+                      <strong>
+                        {booking.name || 'Guest'}
+                      </strong>
+
+                      <small>
+                        {booking.phone || '-'}
+                      </small>
+                    </div>
+                  </div>
+                </td>
+
+                {/* ROOM */}
+                <td>
+                  <strong>
+                    {booking.room || '-'}
+                  </strong>
+
+                  <small style={styles.tableSmall}>
+                    {rooms} room
+                    {rooms > 1 ? 's' : ''}
+                  </small>
+                </td>
+
+                {/* GUEST COUNT */}
+                {!compact && (
+                  <td>
+                    <div style={styles.guestNumbers}>
+                      <span>
+                        👨 {adults} Adults
+                      </span>
+
+                      <span>
+                        👶 {children} Children
+                      </span>
+                    </div>
+                  </td>
+                )}
+
+                {/* DATES */}
+                <td>
+                  <div style={styles.dateCell}>
+                    <strong>
+                      {formatDate(booking.checkIn)}
+                    </strong>
+
+                    <span>→</span>
+
+                    <strong>
+                      {formatDate(booking.checkOut)}
+                    </strong>
+                  </div>
+
+                  {booking.nights && (
+                    <small style={styles.tableSmall}>
+                      {booking.nights} night
+                      {Number(booking.nights) > 1
+                        ? 's'
+                        : ''}
+                    </small>
+                  )}
+                </td>
+
+                {/* STATUS */}
+                <td>
+                  <span
+                    style={{
+                      ...styles.statusBadge,
+                      background:
+                        statusStyle.background,
+                      color:
+                        statusStyle.color
+                    }}
+                  >
+                    {booking.status ||
+                      'Pending'}
+                  </span>
+                </td>
+
+                {/* PRICE */}
+                <td>
+                  <strong>
+                    {formatMoney(
+                      booking.totalPrice
+                    )}
+                  </strong>
+                </td>
+
+                {/* ACTIONS */}
+                <td>
+                  <div style={styles.actions}>
+
+                    {!String(
+                      booking.status || ''
+                    )
+                      .toLowerCase()
+                      .includes('confirmed') && (
+                      <button
+                        title="Confirm booking"
+                        onClick={() =>
+                          onConfirm(booking.id)
+                        }
+                        style={
+                          styles.confirmButton
+                        }
+                      >
+                        ✓
+                      </button>
+                    )}
+
+                    {!String(
+                      booking.status || ''
+                    )
+                      .toLowerCase()
+                      .includes('cancelled') && (
+                      <button
+                        title="Cancel booking"
+                        onClick={() =>
+                          onCancel(booking.id)
+                        }
+                        style={
+                          styles.cancelButton
+                        }
+                      >
+                        ×
+                      </button>
+                    )}
+
+                    <button
+                      title="Delete booking"
+                      onClick={() =>
+                        onDelete(booking.id)
+                      }
+                      style={
+                        styles.deleteButton
+                      }
+                    >
+                      🗑
+                    </button>
+
+                  </div>
+                </td>
+
+              </tr>
+            );
+          })}
+        </tbody>
+
+      </table>
+    </div>
+  );
+};
+
+
+// =====================================================
+// REVIEW CARD
+// =====================================================
+
+const ReviewCard = ({ review, onDelete }) => {
+  const rating = Math.min(
+    5,
+    Math.max(
+      0,
+      Number(review.rating) || 5
+    )
+  );
+
+  const reviewer =
+    review.name ||
+    review.userName ||
+    'Anonymous';
+
+  const comment =
+    review.text ||
+    review.comment ||
+    review.reviewText ||
+    'No comment';
 
   return (
-    <div
-      style={{
-        background: '#fff',
-        borderRadius: '18px',
-        padding: '23px',
-        boxShadow:
-          '0 8px 30px rgba(0,0,0,0.06)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px'
-      }}
-    >
+    <div style={styles.reviewCard}>
 
-      <div
-        style={{
-          width: '58px',
-          height: '58px',
-          flexShrink: 0,
-          borderRadius: '16px',
-          background:
-            `${color}15`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '1.7rem'
-        }}
-      >
-        {icon}
-      </div>
+      <div style={styles.reviewTop}>
+        <div style={styles.reviewer}>
+          <div style={styles.reviewerAvatar}>
+            {String(reviewer)
+              .charAt(0)
+              .toUpperCase()}
+          </div>
 
-      <div>
+          <div>
+            <strong>{reviewer}</strong>
 
-        <div
-          style={{
-            color: '#6b7280',
-            fontSize: '0.85rem'
-          }}
-        >
-          {title}
+            <div style={styles.stars}>
+              {'★'.repeat(rating)}
+              {'☆'.repeat(5 - rating)}
+            </div>
+          </div>
         </div>
 
-        <strong
-          style={{
-            display: 'block',
-            fontSize: '1.7rem',
-            color
-          }}
+        <button
+          onClick={() => onDelete(review.id)}
+          style={styles.reviewDelete}
+          title="Delete review"
         >
-          {value}
-        </strong>
-
-        {subtitle && (
-          <small
-            style={{
-              color: '#9ca3af'
-            }}
-          >
-            {subtitle}
-          </small>
-        )}
-
+          🗑
+        </button>
       </div>
 
-    </div>
-  );
-};
+      <p style={styles.reviewText}>
+        “{comment}”
+      </p>
 
-
-// =========================================================
-// NAV BUTTON
-// =========================================================
-
-const NavButton = ({
-  active,
-  onClick,
-  children
-}) => {
-
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        border: 'none',
-        borderRadius: '11px',
-        padding:
-          '12px 17px',
-        background:
-          active
-            ? '#172033'
-            : 'transparent',
-        color:
-          active
-            ? '#fff'
-            : '#475569',
-        fontWeight: '800',
-        cursor: 'pointer',
-        whiteSpace:
-          'nowrap',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px'
-      }}
-    >
-      {children}
-    </button>
-  );
-};
-
-
-// =========================================================
-// BADGE
-// =========================================================
-
-const Badge = ({ children }) => {
-
-  return (
-    <span
-      style={{
-        minWidth: '20px',
-        height: '20px',
-        padding: '0 6px',
-        borderRadius: '20px',
-        background: '#e67e22',
-        color: '#fff',
-        fontSize: '0.7rem',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    >
-      {children}
-    </span>
-  );
-};
-
-
-// =========================================================
-// SECTION HEADER
-// =========================================================
-
-const SectionHeader = ({
-  title,
-  icon,
-  onClick
-}) => {
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent:
-          'space-between',
-        alignItems: 'center',
-        marginBottom: '20px'
-      }}
-    >
-
-      <h2
-        style={{
-          margin: 0,
-          fontSize: '1.25rem'
-        }}
-      >
-        {icon} {title}
-      </h2>
-
-      {onClick && (
-        <button
-          onClick={onClick}
-          style={{
-            border: 'none',
-            background:
-              '#f1f5f9',
-            color: '#475569',
-            borderRadius: '8px',
-            padding:
-              '8px 12px',
-            cursor: 'pointer',
-            fontWeight: '700'
-          }}
-        >
-          View All →
-        </button>
+      {review.createdAt && (
+        <small style={styles.reviewDate}>
+          {new Date(
+            review.createdAt
+          ).toLocaleDateString()}
+        </small>
       )}
 
     </div>
@@ -1882,365 +1096,592 @@ const SectionHeader = ({
 };
 
 
-// =========================================================
-// BOOKING MINI
-// =========================================================
+// =====================================================
+// LOADING BOX
+// =====================================================
 
-const BookingMini = ({
-  booking
-}) => {
-
-  return (
-    <div
-      style={{
-        padding:
-          '14px 0',
-        borderBottom:
-          '1px solid #eef0f3',
-        display: 'flex',
-        justifyContent:
-          'space-between',
-        gap: '15px',
-        alignItems: 'center'
-      }}
-    >
-
-      <div>
-
-        <strong>
-          {booking.name ||
-            'Unknown'}
-        </strong>
-
-        <div
-          style={{
-            color: '#6b7280',
-            fontSize: '0.85rem',
-            marginTop: '4px'
-          }}
-        >
-          {booking.room ||
-            '-'}{' '}
-          •{' '}
-          {booking.checkIn ||
-            '-'}
-        </div>
-
-      </div>
-
-      <StatusBadge
-        status={
-          booking.status
-        }
-      />
-
-    </div>
-  );
-};
+const LoadingBox = () => (
+  <div style={styles.emptyBox}>
+    <div style={styles.loadingSpinner}>⏳</div>
+    <h3>Loading data...</h3>
+    <p>Please wait a moment.</p>
+  </div>
+);
 
 
-// =========================================================
-// MESSAGE MINI
-// =========================================================
+// =====================================================
+// EMPTY BOX
+// =====================================================
 
-const MessageMini = ({
-  message
-}) => {
-
-  return (
-    <div
-      style={{
-        padding:
-          '14px 0',
-        borderBottom:
-          '1px solid #eef0f3',
-        display: 'flex',
-        gap: '12px'
-      }}
-    >
-
-      <div
-        style={{
-          width: '42px',
-          height: '42px',
-          borderRadius:
-            '12px',
-          background:
-            message.status ===
-            'read'
-              ? '#f1f5f9'
-              : '#fff3e8',
-          display: 'flex',
-          alignItems:
-            'center',
-          justifyContent:
-            'center'
-        }}
-      >
-        💬
-      </div>
-
-      <div
-        style={{
-          minWidth: 0
-        }}
-      >
-
-        <strong>
-          {message.name ||
-            'Anonymous'}
-        </strong>
-
-        <p
-          style={{
-            margin:
-              '4px 0 0',
-            color:
-              '#6b7280',
-            fontSize:
-              '0.85rem',
-            overflow:
-              'hidden',
-            textOverflow:
-              'ellipsis',
-            whiteSpace:
-              'nowrap'
-          }}
-        >
-          {message.message ||
-            'No message'}
-        </p>
-
-      </div>
-
-    </div>
-  );
-};
+const EmptyBox = ({ text }) => (
+  <div style={styles.emptyBox}>
+    <div style={styles.emptyIcon}>📭</div>
+    <h3>{text}</h3>
+    <p>There is nothing to display here yet.</p>
+  </div>
+);
 
 
-// =========================================================
-// SUMMARY BOX
-// =========================================================
-
-const SummaryBox = ({
-  title,
-  value,
-  icon
-}) => {
-
-  return (
-    <div
-      style={{
-        background:
-          '#f8fafc',
-        borderRadius:
-          '14px',
-        padding:
-          '20px'
-      }}
-    >
-
-      <div
-        style={{
-          fontSize:
-            '1.6rem',
-          marginBottom:
-            '8px'
-        }}
-      >
-        {icon}
-      </div>
-
-      <strong
-        style={{
-          display:
-            'block',
-          fontSize:
-            '1.6rem'
-        }}
-      >
-        {value}
-      </strong>
-
-      <span
-        style={{
-          color:
-            '#64748b',
-          fontSize:
-            '0.85rem'
-        }}
-      >
-        {title}
-      </span>
-
-    </div>
-  );
-};
-
-
-// =========================================================
-// STATUS BADGE
-// =========================================================
-
-const StatusBadge = ({
-  status
-}) => {
-
-  const isConfirmed =
-    status?.includes(
-      'Confirmed'
-    );
-
-  const isCancelled =
-    status?.includes(
-      'Cancelled'
-    );
-
-  const isRead =
-    status === '✓ Read';
-
-  let background =
-    '#fff7ed';
-
-  let color =
-    '#c2410c';
-
-  if (isConfirmed) {
-    background =
-      '#dcfce7';
-    color =
-      '#15803d';
-  }
-
-  if (isCancelled) {
-    background =
-      '#fee2e2';
-    color =
-      '#dc2626';
-  }
-
-  if (isRead) {
-    background =
-      '#f1f5f9';
-    color =
-      '#64748b';
-  }
-
-  return (
-    <span
-      style={{
-        display:
-          'inline-block',
-        padding:
-          '7px 11px',
-        borderRadius:
-          '50px',
-        background,
-        color,
-        fontWeight:
-          '800',
-        fontSize:
-          '0.75rem',
-        whiteSpace:
-          'nowrap'
-      }}
-    >
-      {status ||
-        'Pending ⏳'}
-    </span>
-  );
-};
-
-
-// =========================================================
-// EMPTY STATE
-// =========================================================
-
-const EmptyState = ({
-  icon,
-  text
-}) => {
-
-  return (
-    <div
-      style={{
-        textAlign:
-          'center',
-        padding:
-          '45px 20px',
-        color:
-          '#64748b'
-      }}
-    >
-
-      <div
-        style={{
-          fontSize:
-            '3rem',
-          marginBottom:
-            '10px'
-        }}
-      >
-        {icon}
-      </div>
-
-      <p>
-        {text}
-      </p>
-
-    </div>
-  );
-};
-
-
-// =========================================================
+// =====================================================
 // STYLES
-// =========================================================
+// =====================================================
 
-const panelStyle = {
-  background: '#fff',
-  borderRadius: '20px',
-  padding: '25px',
-  boxShadow:
-    '0 8px 30px rgba(0,0,0,0.06)'
-};
+const styles = {
 
-const inputStyle = {
-  width: '100%',
-  padding: '14px 15px',
-  borderRadius: '11px',
-  border:
-    '1px solid #dfe3e8',
-  background: '#fff',
-  color: '#172033',
-  fontSize: '1rem',
-  boxSizing: 'border-box'
-};
+  // PAGE
+  page: {
+    minHeight: '100vh',
+    background:
+      'linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%)',
+    color: '#1e293b',
+    fontFamily:
+      "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+  },
 
-const smallButton = {
-  border: 'none',
-  color: '#fff',
-  borderRadius: '9px',
-  padding: '9px 14px',
-  cursor: 'pointer',
-  fontWeight: '800'
-};
+  // LOGIN
+  loginPage: {
+    minHeight: '100vh',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: '20px',
+    background:
+      'linear-gradient(135deg, #0f172a, #1e293b)'
+  },
 
-const actionButton = {
-  border: 'none',
-  color: '#fff',
-  borderRadius: '7px',
-  padding: '7px 10px',
-  cursor: 'pointer',
-  fontWeight: '700',
-  fontSize: '0.75rem'
-};
+  loginBackground: {
+    position: 'fixed',
+    inset: 0,
+    background:
+      'radial-gradient(circle at top right, rgba(230,126,34,0.25), transparent 35%)',
+    pointerEvents: 'none'
+  },
 
-const tableStyle = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  fontSize: '0.88rem',
-  minWidth: '950px'
+  loginCard: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '430px',
+    background: 'rgba(255,255,255,0.98)',
+    padding: '45px',
+    borderRadius: '24px',
+    boxShadow:
+      '0 30px 80px rgba(0,0,0,0.35)',
+    boxSizing: 'border-box'
+  },
+
+  loginLogo: {
+    width: '75px',
+    height: '75px',
+    margin: '0 auto 20px',
+    borderRadius: '22px',
+    background:
+      'linear-gradient(135deg, #e67e22, #f39c12)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    fontSize: '2.2rem'
+  },
+
+  loginTitle: {
+    textAlign: 'center',
+    margin: 0,
+    color: '#0f172a',
+    fontSize: '2rem'
+  },
+
+  loginSubtitle: {
+    textAlign: 'center',
+    color: '#64748b',
+    marginTop: '8px',
+    marginBottom: '20px'
+  },
+
+  secureBadge: {
+    textAlign: 'center',
+    background: '#fff7ed',
+    color: '#c2410c',
+    padding: '10px',
+    borderRadius: '10px',
+    fontSize: '0.85rem',
+    fontWeight: '600',
+    marginBottom: '25px'
+  },
+
+  label: {
+    display: 'block',
+    marginBottom: '7px',
+    color: '#334155',
+    fontWeight: '600',
+    fontSize: '0.9rem'
+  },
+
+  input: {
+    width: '100%',
+    padding: '14px 15px',
+    marginBottom: '18px',
+    border: '1px solid #cbd5e1',
+    borderRadius: '10px',
+    fontSize: '1rem',
+    boxSizing: 'border-box',
+    outline: 'none'
+  },
+
+  loginButton: {
+    width: '100%',
+    padding: '15px',
+    border: 'none',
+    borderRadius: '11px',
+    background:
+      'linear-gradient(135deg, #e67e22, #f39c12)',
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: '1rem',
+    cursor: 'pointer'
+  },
+
+  // HEADER
+  header: {
+    background:
+      'linear-gradient(135deg, #0f172a, #1e293b)',
+    color: '#fff',
+    padding: '20px 5%',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '20px',
+    flexWrap: 'wrap',
+    boxShadow:
+      '0 5px 25px rgba(15,23,42,0.18)'
+  },
+
+  brand: {
+    fontSize: '1.5rem',
+    fontWeight: '900',
+    letterSpacing: '3px',
+    color: '#f39c12'
+  },
+
+  brandSub: {
+    fontSize: '0.65rem',
+    letterSpacing: '2px',
+    color: '#cbd5e1',
+    marginTop: '3px'
+  },
+
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '15px',
+    flexWrap: 'wrap'
+  },
+
+  adminInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  },
+
+  adminAvatar: {
+    width: '40px',
+    height: '40px',
+    borderRadius: '50%',
+    background: '#334155',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+
+  logoutButton: {
+    padding: '10px 15px',
+    border: '1px solid #475569',
+    background: 'transparent',
+    color: '#fff',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '600'
+  },
+
+  // NAV
+  nav: {
+    background: '#fff',
+    padding: '10px 5%',
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    borderBottom: '1px solid #e2e8f0'
+  },
+
+  navButton: {
+    border: 'none',
+    background: 'transparent',
+    padding: '10px 15px',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    color: '#64748b',
+    fontWeight: '600'
+  },
+
+  navButtonActive: {
+    background: '#fff7ed',
+    color: '#ea580c'
+  },
+
+  navCount: {
+    marginLeft: '7px',
+    background: '#e2e8f0',
+    color: '#475569',
+    borderRadius: '20px',
+    padding: '2px 7px',
+    fontSize: '0.7rem'
+  },
+
+  refreshButton: {
+    marginLeft: 'auto',
+    padding: '10px 15px',
+    border: 'none',
+    background: '#2563eb',
+    color: '#fff',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '600'
+  },
+
+  // CONTENT
+  content: {
+    width: '90%',
+    maxWidth: '1500px',
+    margin: '0 auto',
+    padding: '35px 0 60px'
+  },
+
+  pageHeading: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '30px',
+    gap: '20px'
+  },
+
+  liveBadge: {
+    background: '#dcfce7',
+    color: '#15803d',
+    padding: '8px 14px',
+    borderRadius: '30px',
+    fontSize: '0.75rem',
+    fontWeight: '800'
+  },
+
+  // STATS
+  statsGrid: {
+    display: 'grid',
+    gridTemplateColumns:
+      'repeat(auto-fit, minmax(190px, 1fr))',
+    gap: '18px',
+    marginBottom: '35px'
+  },
+
+  statCard: {
+    background: '#fff',
+    borderRadius: '18px',
+    padding: '22px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '15px',
+    boxShadow:
+      '0 8px 30px rgba(15,23,42,0.06)',
+    border: '1px solid #eef2f7'
+  },
+
+  statIcon: {
+    width: '52px',
+    height: '52px',
+    borderRadius: '14px',
+    background: '#fff7ed',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    fontSize: '1.5rem'
+  },
+
+  // SECTION
+  section: {
+    background: '#fff',
+    borderRadius: '20px',
+    padding: '25px',
+    marginBottom: '30px',
+    boxShadow:
+      '0 8px 30px rgba(15,23,42,0.06)',
+    overflow: 'hidden'
+  },
+
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '20px',
+    gap: '15px'
+  },
+
+  viewButton: {
+    border: 'none',
+    background: '#fff7ed',
+    color: '#ea580c',
+    padding: '9px 14px',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '700'
+  },
+
+  // TOOLBAR
+  toolbar: {
+    display: 'flex',
+    gap: '12px',
+    marginBottom: '20px',
+    flexWrap: 'wrap'
+  },
+
+  searchBox: {
+    flex: 1,
+    minWidth: '250px',
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '0 15px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  },
+
+  filterSelect: {
+    padding: '12px 15px',
+    borderRadius: '10px',
+    border: '1px solid #e2e8f0',
+    background: '#fff',
+    minWidth: '160px'
+  },
+
+  // TABLE
+  tableCard: {
+    background: '#fff',
+    borderRadius: '20px',
+    boxShadow:
+      '0 8px 30px rgba(15,23,42,0.06)',
+    overflow: 'hidden'
+  },
+
+  tableWrapper: {
+    width: '100%',
+    overflowX: 'auto'
+  },
+
+  table: {
+    width: '100%',
+    minWidth: '950px',
+    borderCollapse: 'collapse'
+  },
+
+  guestCell: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  },
+
+  guestAvatar: {
+    width: '38px',
+    height: '38px',
+    borderRadius: '50%',
+    background:
+      'linear-gradient(135deg, #e67e22, #f39c12)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: '800'
+  },
+
+  tableSmall: {
+    display: 'block',
+    color: '#94a3b8',
+    fontSize: '0.75rem',
+    marginTop: '3px'
+  },
+
+  guestNumbers: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    fontSize: '0.8rem'
+  },
+
+  dateCell: {
+    display: 'flex',
+    gap: '7px',
+    alignItems: 'center',
+    whiteSpace: 'nowrap'
+  },
+
+  statusBadge: {
+    display: 'inline-block',
+    padding: '6px 10px',
+    borderRadius: '30px',
+    fontSize: '0.75rem',
+    fontWeight: '800',
+    whiteSpace: 'nowrap'
+  },
+
+  actions: {
+    display: 'flex',
+    gap: '5px'
+  },
+
+  confirmButton: {
+    width: '32px',
+    height: '32px',
+    border: 'none',
+    borderRadius: '7px',
+    background: '#16a34a',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: 'bold'
+  },
+
+  cancelButton: {
+    width: '32px',
+    height: '32px',
+    border: 'none',
+    borderRadius: '7px',
+    background: '#f59e0b',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: 'bold'
+  },
+
+  deleteButton: {
+    width: '32px',
+    height: '32px',
+    border: 'none',
+    borderRadius: '7px',
+    background: '#ef4444',
+    color: '#fff',
+    cursor: 'pointer'
+  },
+
+  // REVIEWS
+  reviewGrid: {
+    display: 'grid',
+    gridTemplateColumns:
+      'repeat(auto-fit, minmax(250px, 1fr))',
+    gap: '15px'
+  },
+
+  reviewGridLarge: {
+    display: 'grid',
+    gridTemplateColumns:
+      'repeat(auto-fit, minmax(300px, 1fr))',
+    gap: '20px'
+  },
+
+  reviewCard: {
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '16px',
+    padding: '20px',
+    boxShadow:
+      '0 5px 20px rgba(15,23,42,0.04)'
+  },
+
+  reviewTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '10px'
+  },
+
+  reviewer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  },
+
+  reviewerAvatar: {
+    width: '42px',
+    height: '42px',
+    borderRadius: '50%',
+    background: '#fff7ed',
+    color: '#ea580c',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: '800'
+  },
+
+  stars: {
+    color: '#f59e0b',
+    fontSize: '0.9rem',
+    marginTop: '3px'
+  },
+
+  reviewText: {
+    color: '#475569',
+    lineHeight: '1.7',
+    fontSize: '0.9rem',
+    margin: '20px 0 10px'
+  },
+
+  reviewDate: {
+    color: '#94a3b8'
+  },
+
+  reviewDelete: {
+    border: 'none',
+    background: '#fee2e2',
+    color: '#dc2626',
+    width: '32px',
+    height: '32px',
+    borderRadius: '7px',
+    cursor: 'pointer'
+  },
+
+  // EMPTY
+  emptyBox: {
+    background: '#fff',
+    borderRadius: '18px',
+    padding: '60px 20px',
+    textAlign: 'center',
+    boxShadow:
+      '0 8px 30px rgba(15,23,42,0.05)'
+  },
+
+  emptyIcon: {
+    fontSize: '3rem'
+  },
+
+  loadingSpinner: {
+    fontSize: '2rem'
+  },
+
+  // FOOTER
+  footer: {
+    background: '#0f172a',
+    color: '#94a3b8',
+    padding: '20px 5%',
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '15px',
+    flexWrap: 'wrap',
+    fontSize: '0.8rem'
+  },
+
+  fullScreenLoader: {
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#f8fafc',
+    color: '#334155'
+  }
 };
 
 export default Admin;
